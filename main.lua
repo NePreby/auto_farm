@@ -154,7 +154,7 @@ setDefault("FarmMethod", "Quest")
 setDefault("SelectedMob", "")
 setDefault("BringMob", true)
 setDefault("BringRadius", 300)
-setDefault("FarmHeight", 5)
+setDefault("FarmHeight", 8)
 setDefault("FarmDistance", 0)
 setDefault("HoldFarmPosition", true)
 setDefault("FreezeTarget", true)
@@ -854,15 +854,9 @@ local function checkHaki()
     end
 end
 
--- Hệ thống đánh tự động tối ưu (Đánh nền & Tương thíchBlox Fruits)
+-- Hệ thống đánh tự động ngầm 100% (Không click màn hình, không chiếm chuột)
 local function attack()
     local now = os.clock()
-    local backgroundMode = _G.BackgroundAttack ~= false
-    if not backgroundMode and (userPointerActive or now < manualPointerPauseUntil
-        or UserInputService:GetFocusedTextBox()) then
-        return
-    end
-
     local delay = math.clamp(tonumber(_G.AttackDelay) or 0.05, 0.01, 0.50)
     if _G.SafetyMode then
         delay = math.max(delay, 0.05)
@@ -876,19 +870,19 @@ local function attack()
     local tool = char and char:FindFirstChildOfClass("Tool")
     if not tool then return end
 
-    -- 1. Kích hoạt Tool bằng phương thức Activate mặc định
+    -- 1. Kích hoạt Tool ngầm
     pcall(function() tool:Activate() end)
 
-    -- 2. Đánh thông qua VirtualUser (chạy ngầm không chiếm con trỏ chuột)
+    -- 2. Gửi sự kiện VirtualUser Button1 ngầm tại gốc Vector2.zero (không click màn hình)
     pcall(function()
         if VirtualUser then
-            VirtualUser:Button1Down(Vector2.new(0, 0))
+            VirtualUser:Button1Down(Vector2.zero)
             task.wait(0.01)
-            VirtualUser:Button1Up(Vector2.new(0, 0))
+            VirtualUser:Button1Up(Vector2.zero)
         end
     end)
 
-    -- 3. Gọi Remote đánh riêng của Blox Fruits nếu có
+    -- 3. Gửi Remote đánh trực tiếp của Blox Fruits (Đánh trúng 100% ngầm)
     pcall(function()
         local net = ReplicatedStorage:FindFirstChild("Modules") and ReplicatedStorage.Modules:FindFirstChild("Net")
         local regAttack = net and net:FindFirstChild("RegisterAttack")
@@ -899,20 +893,11 @@ local function attack()
         if rigController and rigController:IsA("RemoteEvent") then
             rigController:FireServer("weaponAttack")
         end
+        local commE = ReplicatedStorage:FindFirstChild("Remotes") and ReplicatedStorage.Remotes:FindFirstChild("CommE")
+        if commE and commE:IsA("RemoteEvent") then
+            commE:FireServer("weaponAttack")
+        end
     end)
-
-    if backgroundMode then return end
-
-    -- 4. Chế độ tương thích bổ sung click trung tâm màn hình
-    pcall(function()
-        sendingVirtualAttack = true
-        local cam = workspace.CurrentCamera
-        local vp = cam and cam.ViewportSize or Vector2.new(400, 400)
-        VirtualInputManager:SendMouseButtonEvent(vp.X / 2, vp.Y / 2, 0, true, game, 0)
-        task.wait(0.015)
-        VirtualInputManager:SendMouseButtonEvent(vp.X / 2, vp.Y / 2, 0, false, game, 0)
-    end)
-    sendingVirtualAttack = false
 end
 -- ====== Auto Skill (dùng Z, X, C, V) ======
 local lastSkillTime = 0
@@ -1032,9 +1017,13 @@ local function freezeMob(mob)
     rootPart.AssemblyLinearVelocity = Vector3.zero
     rootPart.AssemblyAngularVelocity = Vector3.zero
 
-    local hitboxLimit = _G.SafetyMode and 18 or 40
-    local hitboxSize = math.clamp(tonumber(_G.HitboxSize) or 12, 2, hitboxLimit)
-    rootPart.Size = Vector3.new(hitboxSize, hitboxSize, hitboxSize)
+    -- Mở rộng Hitbox theo chiều cao để khi nhân vật đứng trên cao vẫn đánh trúng 100%
+    local farmHeight = math.abs(tonumber(_G.FarmHeight) or 8)
+    local hitboxLimit = _G.SafetyMode and 25 or 50
+    local hitboxSize = math.clamp(tonumber(_G.HitboxSize) or 14, 4, hitboxLimit)
+    local verticalSize = math.clamp(farmHeight * 2.5 + hitboxSize, hitboxSize, 60)
+
+    rootPart.Size = Vector3.new(hitboxSize, verticalSize, hitboxSize)
 
     if _G.FreezeTarget then
         humanoid.WalkSpeed = 0
