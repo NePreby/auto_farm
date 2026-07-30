@@ -3864,8 +3864,7 @@ notify(
     "Sea " .. WorldSea
         .. "  •  " .. #(WorldSea == 1 and QuestsSea1 or WorldSea == 2 and QuestsSea2 or QuestsSea3) .. " quest"
         .. "  •  " .. #islandNames .. " đảo"
-        .. "
-Giao diện: " .. createdTabCount .. "/9 tab"
+        .. "\nGiao diện: " .. createdTabCount .. "/9 tab"
         .. "\nRightControl hoặc nút H để ẩn / hiện giao diện"
         .. (teleportReloadReady and "  •  Tự nạp server: ON" or "  •  Executor không hỗ trợ tự nạp"),
     6
