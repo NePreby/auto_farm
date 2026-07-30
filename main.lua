@@ -1655,9 +1655,10 @@ local function getBossList()
         local clean = normalizeMobName(name)
         if clean ~= "" and not known[clean] then
             known[clean] = true
-            table.insert(bosses, clean:gsub("(%a)([%w']*)", function(a, b)
+            local formatted = (clean:gsub("(%a)([%w']*)", function(a, b)
                 return string.upper(a) .. b
             end))
+            table.insert(bosses, formatted)
         end
     end
 
