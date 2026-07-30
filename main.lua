@@ -1,6 +1,6 @@
 local HAOTOOL_SOURCE = [========[
 local RuntimeEnv = getgenv and getgenv() or _G
-local RequestedScriptVersion = "2.1.4"
+local RequestedScriptVersion = "2.2.0"
 if RuntimeEnv.HAOTOOL_RUNNING then
     -- Khi người dùng bấm EXECUTE lại trong Delta X: Xóa giao diện cũ và dựng lại giao diện mới 100%
     if type(RuntimeEnv.HAOTOOL_DESTROY_UI) == "function" then
@@ -22,7 +22,7 @@ RuntimeEnv.HAOTOOL_TAB_COUNT = 0
 
 --[[
     ================================================================================
-    ⚡ HAOTOOL | BLOX FRUITS V2.1.4 — STABLE EDITION
+    ⚡ HAOTOOL | BLOX FRUITS V2.2.0 — STABLE EDITION
     --------------------------------------------------------------------------------
     Developer   : HAOTOOL Team
     UI Library  : Fluent (Dark Theme)
@@ -90,6 +90,27 @@ if PlaceId == 2753915549 then WorldSea = 1
 elseif PlaceId == 4442272183 then WorldSea = 2
 elseif PlaceId == 7449423635 then WorldSea = 3
 end
+-- Truy cập dữ liệu người chơi theo một đường duy nhất, chịu được lúc Data tải chậm.
+local function getPlayerData()
+    return Player:FindFirstChild("Data")
+end
+
+local function getPlayerValue(name, fallback)
+    local data = getPlayerData()
+    local valueObject = data and data:FindFirstChild(name)
+    if not valueObject then return fallback end
+    local ok, value = pcall(function() return valueObject.Value end)
+    if ok and value ~= nil then return value end
+    return fallback
+end
+
+local function getPlayerLevel()
+    return tonumber(getPlayerValue("Level", 1)) or 1
+end
+
+local function getPlayerBeli()
+    return tonumber(getPlayerValue("Beli", 0)) or 0
+end
 
 ------------------------------------------------------------
 -- PHẦN 1.5: LOAD FLUENT UI LIBRARY
@@ -108,7 +129,10 @@ if not ok1 or not Fluent then
 end
 
 if not Fluent then
-    warn("[HAOTOOL] Không nạp được Fluent UI: " .. tostring(err1))
+    RuntimeEnv.HAOTOOL_RUN_TOKEN = {}
+    RuntimeEnv.HAOTOOL_RUNNING = nil
+    RuntimeEnv.HAOTOOL_LAST_FATAL_ERROR = "Không nạp được Fluent UI: " .. tostring(err1)
+    warn("[HAOTOOL] " .. RuntimeEnv.HAOTOOL_LAST_FATAL_ERROR)
     return
 end
 
@@ -301,10 +325,17 @@ local runner, compileError = loadstring(source)
 if runner then
     local ok, runError = pcall(runner)
     if not ok then
+        env.HAOTOOL_RUN_TOKEN = {}
         env.HAOTOOL_RUNNING = nil
+        env.HAOTOOL_LAST_FATAL_ERROR = tostring(runError)
         warn("[HAOTOOL] Auto reload lỗi: " .. tostring(runError))
+    else
+        env.HAOTOOL_LAST_FATAL_ERROR = nil
     end
 else
+    env.HAOTOOL_RUN_TOKEN = {}
+    env.HAOTOOL_RUNNING = nil
+    env.HAOTOOL_LAST_FATAL_ERROR = tostring(compileError)
     warn("[HAOTOOL] Không biên dịch được auto reload: " .. tostring(compileError))
 end
     ]==]
@@ -689,8 +720,10 @@ end
 local currentTween = nil
 local movementSerial = 0
 local activeFarmTarget = nil
+local activeFruitTarget = nil
 local farmState = "idle"
 local lastAttackTime = 0
+local lastAttackMethod = "Chưa đánh"
 local lastCombatMaintenance = 0
 local lastEquipCheck = 0
 local lastPreparedTarget = nil
@@ -701,6 +734,8 @@ local manualPointerPauseUntil = 0
 
 -- Chỉ một chế độ được quyền di chuyển nhân vật tại một thời điểm.
 local function getActiveMovementMode()
+    -- Trái đang tồn tại được nhặt trước, sau đó tự trả quyền di chuyển cho farm.
+    if _G.AutoCollectFruit and activeFruitTarget and activeFruitTarget.Parent then return "fruit" end
     if _G.AutoFarmLevel then return "level" end
     if _G.AutoFarmBoss then return "boss" end
     if _G.AutoFarmMastery then return "mastery" end
@@ -709,7 +744,6 @@ local function getActiveMovementMode()
     if _G.AutoFarmFragment then return "fragment" end
     if _G.AutoRaid and _G.AutoRaidFarm then return "raid" end
     if _G.AutoFarmChest then return "chest" end
-    if _G.AutoCollectFruit then return "fruit" end
     return nil
 end
 
@@ -737,10 +771,15 @@ end)
 
 local function clearFarmTarget()
     local wasAttacking = farmState == "attacking"
+    local hadTarget = activeFarmTarget ~= nil
     activeFarmTarget = nil
     if wasAttacking then
         farmState = "idle"
         setNoclip(false)
+    end
+    if wasAttacking or hadTarget then
+        restoreFrozenMobs()
+        lastPreparedTarget = nil
     end
 
     local char = Player.Character
@@ -902,51 +941,134 @@ local function checkHaki()
 end
 
 -- Hệ thống đánh tự động ngầm 100% (Không click màn hình, trúng 100% sát thương)
+local combatControllerCache = nil
+local lastCombatControllerResolve = 0
+
+local function findAttackController(value, depth, visited)
+    if type(value) ~= "table" then return nil end
+    visited = visited or {}
+    if visited[value] then return nil end
+    visited[value] = true
+
+    local direct = rawget(value, "activeController")
+    if type(direct) == "table"
+        and (type(rawget(direct, "attack")) == "function"
+            or type(rawget(direct, "Attack")) == "function") then
+        return direct
+    end
+    if type(rawget(value, "attack")) == "function"
+        or type(rawget(value, "Attack")) == "function" then
+        return value
+    end
+    if depth <= 0 then return nil end
+
+    local found = nil
+    pcall(function()
+        for _, nested in pairs(value) do
+            found = findAttackController(nested, depth - 1, visited)
+            if found then break end
+        end
+    end)
+    return found
+end
+
+local function findControllerInFunction(fn)
+    if type(fn) ~= "function" then return nil end
+    local found = nil
+    local bulkGetter = getupvalues or (debug and debug.getupvalues)
+    if type(bulkGetter) == "function" then
+        pcall(function()
+            found = findAttackController(bulkGetter(fn), 3, {})
+        end)
+        if found then return found end
+    end
+
+    local singleGetter = getupvalue or (debug and debug.getupvalue)
+    if type(singleGetter) == "function" then
+        for index = 1, 30 do
+            local ok, first, second = pcall(singleGetter, fn, index)
+            if not ok then break end
+            local value = second ~= nil and second or first
+            if value == nil then break end
+            found = findAttackController(value, 3, {})
+            if found then return found end
+        end
+    end
+    return nil
+end
+
+local function resolveCombatController(force)
+    if combatControllerCache
+        and (type(combatControllerCache.attack) == "function"
+            or type(combatControllerCache.Attack) == "function") then
+        return combatControllerCache
+    end
+
+    local now = os.clock()
+    if not force and now - lastCombatControllerResolve < 2 then return nil end
+    lastCombatControllerResolve = now
+
+    local playerScripts = Player:FindFirstChild("PlayerScripts")
+    local combatModule = playerScripts and playerScripts:FindFirstChild("CombatFramework")
+    if not combatModule or not combatModule:IsA("ModuleScript") then return nil end
+
+    local ok, framework = pcall(require, combatModule)
+    if not ok then return nil end
+
+    local controller = findAttackController(framework, 4, {})
+        or findControllerInFunction(framework)
+    if controller then combatControllerCache = controller end
+    return controller
+end
+
+-- Ưu tiên bộ điều khiển chiến đấu thật để đánh nền mà không chiếm chuột.
 local function attack()
     local now = os.clock()
     local delay = math.clamp(tonumber(_G.AttackDelay) or 0.05, 0.01, 0.50)
-    if _G.SafetyMode then
-        delay = math.max(delay, 0.05)
-    end
-    if now - lastAttackTime < delay then return end
+    if _G.SafetyMode then delay = math.max(delay, 0.05) end
+    if now - lastAttackTime < delay then return false end
     lastAttackTime = now
 
     checkHaki()
 
     local char = Player.Character
     local tool = char and char:FindFirstChildOfClass("Tool")
-    if not tool then return end
+    if not tool then
+        lastAttackMethod = "Chưa trang bị vũ khí"
+        return false
+    end
 
-    -- 1. Kích hoạt Tool ngầm
-    pcall(function() tool:Activate() end)
-
-    -- 2. Gửi click ảo VirtualUser kết hợp Camera CFrame (không di chuyển chuột)
-    pcall(function()
-        if VirtualUser then
-            local cam = workspace.CurrentCamera
-            local cf = cam and cam.CFrame or CFrame.new()
-            VirtualUser:ClickButton1(Vector2.new(500, 500), cf)
-            VirtualUser:Button1Down(Vector2.zero, cf)
-            task.wait(0.01)
-            VirtualUser:Button1Up(Vector2.zero, cf)
+    local controller = resolveCombatController(false)
+    if controller then
+        local controllerAttack = controller.attack or controller.Attack
+        local ok = pcall(controllerAttack, controller)
+        if ok then
+            lastAttackMethod = "CombatController"
+            return true
         end
-    end)
+        combatControllerCache = nil
+    end
 
-    -- 3. Gửi Remote đánh ngầm Blox Fruits
-    pcall(function()
-        local net = ReplicatedStorage:FindFirstChild("Modules") and ReplicatedStorage.Modules:FindFirstChild("Net")
-        if net then
-            local regAttack = net:FindFirstChild("RegisterAttack") or net:FindFirstChild("RE/RegisterAttack")
-            if regAttack and regAttack:IsA("RemoteEvent") then regAttack:FireServer() end
-        end
-        local remotes = ReplicatedStorage:FindFirstChild("Remotes")
-        local commE = remotes and remotes:FindFirstChild("CommE")
-        if commE and commE:IsA("RemoteEvent") then commE:FireServer("weaponAttack") end
-        local rigController = ReplicatedStorage:FindFirstChild("RigControllerEvent")
-        if rigController and rigController:IsA("RemoteEvent") then rigController:FireServer("weaponAttack") end
+    local activated = pcall(function() tool:Activate() end)
+    if activated then lastAttackMethod = "Tool:Activate" end
+    if _G.BackgroundAttack ~= false then return activated end
+
+    -- Chế độ tương thích chỉ click khi người dùng không thao tác giao diện.
+    if userPointerActive or now < manualPointerPauseUntil
+        or UserInputService:GetFocusedTextBox() then
+        return activated
+    end
+
+    sendingVirtualAttack = true
+    local inputOk = pcall(function()
+        VirtualInputManager:SendMouseButtonEvent(0, 0, 0, true, game, 0)
+        task.wait(0.015)
+        VirtualInputManager:SendMouseButtonEvent(0, 0, 0, false, game, 0)
     end)
-end
--- ====== Auto Skill (dùng Z, X, C, V) ======
+    sendingVirtualAttack = false
+    if inputOk then lastAttackMethod = "VirtualInput dự phòng" end
+    return activated or inputOk
+end-- ====== Auto Skill (dùng Z, X, C, V) ======
 local lastSkillTime = 0
 local skillSequenceBusy = false
 local function useSkills(force)
@@ -1068,7 +1190,7 @@ local function freezeMob(mob)
 
     -- Nối dài Hitbox chiều cao lên phía trên để nhân vật ở độ cao 12+ vẫn chạm Hitbox và đánh trúng 100%
     local farmHeight = math.abs(tonumber(_G.FarmHeight) or 12)
-    local hitboxLimit = _G.SafetyMode and 30 or 60
+    local hitboxLimit = _G.SafetyMode and 18 or 60
     local hitboxSize = math.clamp(tonumber(_G.HitboxSize) or 14, 4, hitboxLimit)
     local verticalSize = math.clamp(farmHeight * 2.5 + 20, hitboxSize, 90)
 
@@ -1078,8 +1200,9 @@ local function freezeMob(mob)
         humanoid.WalkSpeed = 0
         humanoid.JumpPower = 0
         humanoid.AutoRotate = false
-        humanoid.PlatformStand = true
-        rootPart.Anchored = true
+        -- Không neo/PlatformStand mục tiêu: hai trạng thái này có thể làm bộ đánh của game bỏ qua sát thương.
+        humanoid.PlatformStand = false
+        rootPart.Anchored = false
     end
 end
 
@@ -1107,6 +1230,7 @@ restoreFrozenMobs = function()
 end
 
 local function bringMobsNear(targetName, centerCFrame)
+    if not _G.BringMob then return end
     pcall(function()
         local enemies = workspace:FindFirstChild("Enemies")
         if not enemies then return end
@@ -1304,39 +1428,44 @@ local function startQuest(quest)
 end
 
 -- ====== Tìm quái theo tên (gần nhất) ======
-local function isFruitObject(obj)
-    if not obj then return false end
-    local lowerName = string.lower(obj.Name)
-    local hasFruitName = string.find(lowerName, "fruit", 1, true) ~= nil or string.find(lowerName, "trái", 1, true) ~= nil
-    if not hasFruitName then return false end
+local function getFruitHandle(obj)
+    if not obj then return nil end
+    if obj:IsA("BasePart") then return obj end
 
-    if obj:IsA("Tool") or obj:IsA("Model") or obj:IsA("BasePart") then
-        local handle = obj:FindFirstChild("Handle") or (obj:IsA("BasePart") and obj)
-        if handle and handle:IsA("BasePart") then
-            return true
-        end
+    local handle = obj:FindFirstChild("Handle", true)
+    if handle and handle:IsA("BasePart") then return handle end
+    if obj:IsA("Model") and obj.PrimaryPart then return obj.PrimaryPart end
+
+    local part = obj:FindFirstChildWhichIsA("BasePart", true)
+    return part
+end
+
+local function isFruitObject(obj)
+    if not obj or not (obj:IsA("Tool") or obj:IsA("Model") or obj:IsA("BasePart")) then
+        return false
     end
-    return false
+    local lowerName = string.lower(obj.Name)
+    local hasFruitName = string.find(lowerName, "fruit", 1, true) ~= nil
+        or string.find(lowerName, "trái", 1, true) ~= nil
+    return hasFruitName and getFruitHandle(obj) ~= nil
 end
 
 local function getSpawnedFruits()
-    local fruits = {}
-    local seen = {}
-    local containers = {
-        workspace,
-        workspace:FindFirstChild("Fruit"),
-        workspace:FindFirstChild("Fruits"),
-        workspace:FindFirstChild("SpawnedFruits"),
-    }
-    for _, container in ipairs(containers) do
-        if container then
-            for _, obj in ipairs(container:GetChildren()) do
-                if isFruitObject(obj) and not seen[obj] then
-                    seen[obj] = true
-                    table.insert(fruits, obj)
-                end
+    local fruits, seen = {}, {}
+    local function addFrom(container, recursive)
+        if not container then return end
+        local objects = recursive and container:GetDescendants() or container:GetChildren()
+        for _, obj in ipairs(objects) do
+            if isFruitObject(obj) and not seen[obj] then
+                seen[obj] = true
+                table.insert(fruits, obj)
             end
         end
+    end
+
+    addFrom(workspace, false)
+    for _, folderName in ipairs({"Fruit", "Fruits", "SpawnedFruits"}) do
+        addFrom(workspace:FindFirstChild(folderName), true)
     end
     return fruits
 end
@@ -1345,35 +1474,38 @@ local function findNearestFruit()
     local rootPart = Player.Character and Player.Character:FindFirstChild("HumanoidRootPart")
     local closest, closestDistance = nil, math.huge
     for _, fruit in ipairs(getSpawnedFruits()) do
-        local handle = fruit:FindFirstChild("Handle")
-        local distance = rootPart and (handle.Position - rootPart.Position).Magnitude or 0
-        if distance < closestDistance then
-            closest, closestDistance = fruit, distance
+        local handle = getFruitHandle(fruit)
+        if handle then
+            local distance = rootPart and (handle.Position - rootPart.Position).Magnitude or 0
+            if distance < closestDistance then
+                closest, closestDistance = fruit, distance
+            end
         end
     end
     return closest, closestDistance
 end
 
 local function touchFruit(fruit)
-    local handle = fruit and fruit:FindFirstChild("Handle")
+    local handle = getFruitHandle(fruit)
     local rootPart = Player.Character and Player.Character:FindFirstChild("HumanoidRootPart")
     if not handle or not rootPart then return false end
 
     if type(firetouchinterest) == "function" then
-        return runFeature("Nhặt trái", function()
+        local ok = runFeature("Nhặt trái", function()
             firetouchinterest(rootPart, handle, 0)
             task.wait(0.08)
             firetouchinterest(rootPart, handle, 1)
         end)
+        return ok
     end
 
-    -- Fallback chuẩn: đặt nhân vật chạm Handle để Touched được gửi lên máy chủ.
+    -- Fallback: chạm vật lý vào Handle khi executor không có firetouchinterest.
     rootPart.CFrame = handle.CFrame
     rootPart.AssemblyLinearVelocity = Vector3.zero
-    task.wait(0.25)
-    return fruit.Parent ~= workspace
+    rootPart.AssemblyAngularVelocity = Vector3.zero
+    task.wait(0.35)
+    return not fruit.Parent or getFruitHandle(fruit) == nil
 end
-
 local function findMob(mobName, useNearest)
     if not workspace:FindFirstChild("Enemies") then return nil end
     local char = Player.Character
@@ -1768,77 +1900,79 @@ end
 -- PHẦN 6: VÒNG LẶP NỀN (BACKGROUND LOOPS)
 ------------------------------------------------------------
 
--- ====== LOOP 1: Auto Farm Level (Tự động nhận Quest Boss khi có Boss) ======
+-- ====== LOOP 1: Auto Farm Level ======
+local lastFarmStatus = "Chờ bật Auto Farm Level"
 task.spawn(function()
     while RuntimeEnv.HAOTOOL_RUN_TOKEN == CurrentRunToken do
-        task.wait(0.03)
+        task.wait(0.05)
 
         if _G.AutoFarmLevel and modeCanMove("level") then
             runFeature("Auto Farm Level", function()
                 local level = getPlayerLevel()
-                local normalQuest = getQuestData(level)
-                if not normalQuest then return end
-
-                local questToUse = normalQuest
-                local targetMob = nil
-                local isBossTarget = false
-
-                -- Tự động phát hiện Boss cùng tầm level đang có mặt trên server
-                local bossQuest, bossMob = getAvailableBossQuest(level)
-                if bossQuest and bossMob then
-                    questToUse = bossQuest
-                    targetMob = bossMob
-                    isBossTarget = true
+                local quest = getQuestData(level)
+                local method = _G.FarmMethod or "Quest"
+                if not quest then
+                    lastFarmStatus = "Không có dữ liệu quest cho cấp " .. level
+                    return
                 end
 
-                if _G.FarmMethod == "Quest" and hasActiveQuest() then
-                    if acceptedQuestSignature ~= nil and acceptedQuestSignature ~= questSignature(questToUse) then
+                if method == "Quest" then
+                    local expectedSignature = questSignature(quest)
+                    if hasActiveQuest() and acceptedQuestSignature
+                        and acceptedQuestSignature ~= expectedSignature then
+                        lastFarmStatus = "Đang đổi sang quest đúng cấp"
                         abandonQuest()
                         acceptedQuestSignature = nil
                         task.wait(0.35)
                         return
                     end
-                end
 
-                if not hasActiveQuest() then
-                    startQuest(questToUse)
-                    return
-                end
-
-                if not isBossTarget then
-                    if _G.FarmMethod == "Quest" then
-                        targetMob = findMob(questToUse.MobName, false)
-                    elseif _G.FarmMethod == "Nearest" then
-                        targetMob = findMob("", true)
-                    elseif _G.FarmMethod == "Selected Mob" then
-                        targetMob = findMob(_G.SelectedMob, false)
-                    else
-                        targetMob = findMob(questToUse.MobName, false)
+                    if not hasActiveQuest() then
+                        lastFarmStatus = "Đang nhận quest " .. tostring(quest.MobName)
+                        startQuest(quest)
+                        return
                     end
+                end
+
+                local targetMob
+                if method == "Nearest" then
+                    targetMob = findMob("", true)
+                elseif method == "Selected Mob" then
+                    targetMob = findMob(_G.SelectedMob, false)
+                else
+                    targetMob = findMob(quest.MobName, false)
                 end
 
                 if not targetMob then
                     clearFarmTarget()
-                    if ensureQuestArea(questToUse) then
-                        toTarget(CFrame.new(questToUse.MobPosition))
+                    if method == "Quest" then
+                        lastFarmStatus = "Đang chờ quái " .. tostring(quest.MobName)
+                        if ensureQuestArea(quest) then
+                            toTarget(CFrame.new(quest.MobPosition))
+                        end
+                    elseif method == "Selected Mob" then
+                        lastFarmStatus = "Chưa thấy quái " .. tostring(_G.SelectedMob)
+                    else
+                        lastFarmStatus = "Chưa thấy quái gần nhân vật"
                     end
                     return
                 end
 
-                local bringName = questToUse.MobName
-                if not isBossTarget then
-                    if _G.FarmMethod == "Nearest" then
-                        bringName = targetMob.Name
-                    elseif _G.FarmMethod == "Selected Mob" then
-                        bringName = _G.SelectedMob
-                    end
-                end
-
+                local bringName = method == "Quest" and quest.MobName
+                    or method == "Selected Mob" and _G.SelectedMob
+                    or targetMob.Name
+                lastFarmStatus = "Đang đánh " .. tostring(targetMob.Name)
+                    .. " • " .. tostring(lastAttackMethod)
                 engageTarget(targetMob, bringName, _G.SelectWeapon)
             end)
+        else
+            if not _G.AutoFarmLevel then
+                lastFarmStatus = "Chờ bật Auto Farm Level"
+            end
         end
     end
 end)
+
 -- ====== LOOP 2: Auto Farm Mastery ======
 task.spawn(function()
     while RuntimeEnv.HAOTOOL_RUN_TOKEN == CurrentRunToken do
@@ -2001,38 +2135,51 @@ end)
 
 -- ====== LOOP 7: Auto Fruit Finder & Collector ======
 local announcedFruits = setmetatable({}, {__mode = "k"})
+local lastFruitStatus = "Chờ bật Auto Nhặt Trái"
 task.spawn(function()
     while RuntimeEnv.HAOTOOL_RUN_TOKEN == CurrentRunToken do
-        task.wait(1)
+        task.wait(0.5)
+
+        if not _G.AutoCollectFruit then activeFruitTarget = nil end
         if _G.AutoFruitFinder or _G.AutoCollectFruit then
             runFeature("Theo dõi trái", function()
                 local fruits = getSpawnedFruits()
                 local rootPart = Player.Character and Player.Character:FindFirstChild("HumanoidRootPart")
+                lastFruitStatus = #fruits > 0 and ("Tìm thấy " .. #fruits .. " trái") or "Không có trái trên bản đồ"
 
                 if _G.AutoFruitFinder then
                     for _, fruit in ipairs(fruits) do
                         if not announcedFruits[fruit] then
                             announcedFruits[fruit] = true
-                            local distance = rootPart
-                                and math.floor((fruit.Handle.Position - rootPart.Position).Magnitude) or 0
+                            local handle = getFruitHandle(fruit)
+                            local distance = rootPart and handle
+                                and math.floor((handle.Position - rootPart.Position).Magnitude) or 0
                             notify("🍎 Phát hiện trái", fruit.Name .. " [" .. distance .. "m]", 6)
                         end
                     end
                 end
 
-                if _G.AutoCollectFruit and modeCanMove("fruit") then
+                if _G.AutoCollectFruit then
                     local fruit = findNearestFruit()
-                    if fruit and fruit:FindFirstChild("Handle") then
-                        toTarget(fruit.Handle.CFrame * CFrame.new(0, 2, 0))
-                        task.wait(0.15)
+                    activeFruitTarget = fruit
+                    local handle = getFruitHandle(fruit)
+                    if fruit and handle and modeCanMove("fruit") then
+                        lastFruitStatus = "Đang nhặt " .. fruit.Name
+                        toTarget(handle.CFrame * CFrame.new(0, 2, 0))
+                        task.wait(0.12)
                         touchFruit(fruit)
+                        if not fruit.Parent or not getFruitHandle(fruit) then
+                            activeFruitTarget = nil
+                            lastFruitStatus = "Đã nhặt " .. fruit.Name
+                        end
+                    elseif not fruit then
+                        activeFruitTarget = nil
                     end
                 end
             end)
         end
     end
 end)
-
 -- ====== LOOP 8: Auto Raid / Farm Fragment ======
 task.spawn(function()
     while RuntimeEnv.HAOTOOL_RUN_TOKEN == CurrentRunToken do
@@ -2265,7 +2412,7 @@ task.spawn(function()
 
             if _G.FruitESP then
                 for _, fruit in ipairs(getSpawnedFruits()) do
-                    local handle = fruit:FindFirstChild("Handle") or (fruit:IsA("BasePart") and fruit) or fruit:FindFirstChildOfClass("BasePart")
+                    local handle = getFruitHandle(fruit)
                     if handle and (handle.Position - rootPart.Position).Magnitude <= maxDistance then
                         seen[fruit] = true
                         createESP(fruit, "fruit", _G.ESPFruitColor, "🍎 " .. fruit.Name)
@@ -2342,14 +2489,7 @@ task.spawn(function()
         task.wait(30)
         if _G.ServerHopNoFruit then
             runFeature("Server Hop Fruit", function()
-                -- Kiểm tra có trái trên map không
-                local hasFruit = false
-                for _, obj in pairs(workspace:GetChildren()) do
-                    if obj:IsA("Tool") and obj.Name:find("Fruit") then
-                        hasFruit = true
-                        break
-                    end
-                end
+                local hasFruit = #getSpawnedFruits() > 0
                 if not hasFruit then
                     notify("🔄 Server Hop", "Không có trái, đang chuyển server...", 3)
                     task.wait(2)
@@ -2408,6 +2548,10 @@ local function buildSystemDiagnostic()
     end
     table.sort(runtimeErrors)
 
+    if RuntimeEnv.HAOTOOL_LAST_FATAL_ERROR then
+        table.insert(notes, "Lỗi khởi động: " .. tostring(RuntimeEnv.HAOTOOL_LAST_FATAL_ERROR))
+    end
+
     local status = "Kiểm tra lõi: " .. passed .. "/" .. (passed + #failed)
     if #failed > 0 then status = status .. "\nThiếu: " .. table.concat(failed, ", ") end
     if #notes > 0 then status = status .. "\nLưu ý: " .. table.concat(notes, "; ") end
@@ -2417,6 +2561,9 @@ local function buildSystemDiagnostic()
         status = status .. "\nKhông ghi nhận lỗi vòng chạy."
     end
     status = status .. "\nChế độ di chuyển: " .. tostring(getActiveMovementMode() or "không")
+    status = status .. "\nFarm: " .. tostring(lastFarmStatus)
+    status = status .. "\nTrái: " .. tostring(lastFruitStatus)
+    status = status .. "\nĐánh: " .. tostring(lastAttackMethod)
     return status
 end
 ------------------------------------------------------------
@@ -2457,47 +2604,61 @@ local function setMainWindowVisible(visible)
 end
 
 local function rebuildMainInterface()
-    if RuntimeEnv.HAOTOOL_RELOADING then return end
-    if type(readfile) ~= "function" then return end
+    if RuntimeEnv.HAOTOOL_RELOADING then return false end
+    if type(readfile) ~= "function" then
+        RuntimeEnv.HAOTOOL_LAST_FATAL_ERROR = "Executor không hỗ trợ readfile để dựng lại menu."
+        return false
+    end
 
     RuntimeEnv.HAOTOOL_RELOADING = true
-    pcall(stopFarmMovement)
-    pcall(clearAllESP)
-    saveTeleportState()
-    pcall(function()
-        RuntimeEnv.HAOTOOL_TELEPORT_STATE = HttpService:JSONDecode(
-            readfile(TELEPORT_STATE_FILE)
-        )
-    end)
-    RuntimeEnv.HAOTOOL_RUN_TOKEN = {}
-    RuntimeEnv.HAOTOOL_RUNNING = nil
-    RuntimeEnv.HAOTOOL_TOGGLE_MENU = nil
-
     task.spawn(function()
-        task.wait()
         local readOk, source = pcall(function()
             return readfile(TELEPORT_SCRIPT_FILE)
         end)
-        if not readOk then
+        if not readOk or type(source) ~= "string" or source == "" then
             RuntimeEnv.HAOTOOL_RELOADING = nil
-            warn("[HAOTOOL] Không đọc được file phục hồi giao diện.")
+            RuntimeEnv.HAOTOOL_LAST_FATAL_ERROR = "Không đọc được file phục hồi giao diện: " .. tostring(source)
+            warn("[HAOTOOL] " .. RuntimeEnv.HAOTOOL_LAST_FATAL_ERROR)
             return
         end
 
         local runner, compileError = loadstring(source)
         if not runner then
             RuntimeEnv.HAOTOOL_RELOADING = nil
-            warn("[HAOTOOL] Không dựng lại được giao diện: " .. tostring(compileError))
+            RuntimeEnv.HAOTOOL_LAST_FATAL_ERROR = "Không biên dịch được file phục hồi: " .. tostring(compileError)
+            warn("[HAOTOOL] " .. RuntimeEnv.HAOTOOL_LAST_FATAL_ERROR)
             return
         end
+
+        pcall(stopFarmMovement)
+        pcall(clearAllESP)
+        saveTeleportState()
+        pcall(function()
+            RuntimeEnv.HAOTOOL_TELEPORT_STATE = HttpService:JSONDecode(
+                readfile(TELEPORT_STATE_FILE)
+            )
+        end)
+
+        local destroyOldUI = RuntimeEnv.HAOTOOL_DESTROY_UI
+        RuntimeEnv.HAOTOOL_RUN_TOKEN = {}
+        RuntimeEnv.HAOTOOL_RUNNING = nil
+        RuntimeEnv.HAOTOOL_TOGGLE_MENU = nil
+        RuntimeEnv.HAOTOOL_DESTROY_UI = nil
+        if type(destroyOldUI) == "function" then pcall(destroyOldUI) end
+        task.wait()
 
         local runOk, runError = pcall(runner)
         RuntimeEnv.HAOTOOL_RELOADING = nil
         if not runOk then
+            RuntimeEnv.HAOTOOL_RUN_TOKEN = {}
             RuntimeEnv.HAOTOOL_RUNNING = nil
+            RuntimeEnv.HAOTOOL_LAST_FATAL_ERROR = tostring(runError)
             warn("[HAOTOOL] Phục hồi giao diện lỗi: " .. tostring(runError))
+        else
+            RuntimeEnv.HAOTOOL_LAST_FATAL_ERROR = nil
         end
     end)
+    return true
 end
 
 local function toggleMainWindow()
@@ -2578,11 +2739,13 @@ local function createLauncherButton()
 
     -- Kéo thả nút mượt mà + Nhấp vào để Bật/Tắt Menu 100%
     local dragging = false
+    local dragDistance = 0
     local dragStart, startPos = nil, nil
 
     button.InputBegan:Connect(function(input)
         if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
             dragging = true
+            dragDistance = 0
             dragStart = input.Position
             startPos = button.Position
         end
@@ -2590,28 +2753,29 @@ local function createLauncherButton()
 
     button.InputEnded:Connect(function(input)
         if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-            if dragging then
-                dragging = false
-                local dist = 0
-                if dragStart and input.Position then
-                    dist = (input.Position - dragStart).Magnitude
-                end
-                if dist < 10 then
-                    toggleMainWindow()
-                end
-            end
+            dragging = false
         end
     end)
 
     button.InputChanged:Connect(function(input)
-        if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+        if dragging and dragStart
+            and (input.UserInputType == Enum.UserInputType.MouseMovement
+                or input.UserInputType == Enum.UserInputType.Touch) then
             local delta = input.Position - dragStart
-            button.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+            dragDistance = delta.Magnitude
+            button.Position = UDim2.new(
+                startPos.X.Scale, startPos.X.Offset + delta.X,
+                startPos.Y.Scale, startPos.Y.Offset + delta.Y
+            )
         end
     end)
 
     local lastLauncherToggle = 0
     button.Activated:Connect(function()
+        if dragDistance >= 10 then
+            dragDistance = 0
+            return
+        end
         local now = os.clock()
         if now - lastLauncherToggle < 0.25 then return end
         lastLauncherToggle = now
@@ -2711,7 +2875,8 @@ UITabs.Combat = addTabSafe("Chiến đấu", "Chiến đấu")
 UITabs.Misc = addTabSafe("Tiện ích", "Tiện ích")
 UITabs.Settings = addTabSafe("Cài đặt", "Cài đặt")
 RuntimeEnv.HAOTOOL_TAB_COUNT = createdTabCount
-local currentBossNames
+local currentBossNames = getBossList()
+local islandNames
 
 local MainTab = UITabs.Main
 runFeature("Giao diện Tổng quan", function()
@@ -2893,7 +3058,7 @@ FarmPositionSection:AddToggle("SafetyModeToggle", {
 
 FarmPositionSection:AddToggle("BackgroundAttackToggle", {
     Title = "Đánh nền (không chiếm chuột)",
-    Description = "Chỉ dùng Tool:Activate nên vẫn bấm menu bình thường. Nếu vũ khí không gây sát thương, hãy tắt để dùng chế độ tương thích.",
+    Description = "Ưu tiên CombatController thật, không chiếm chuột; tự dự phòng bằng Tool:Activate nếu executor không hỗ trợ.",
     Default = _G.BackgroundAttack,
     Callback = function(v) _G.BackgroundAttack = v end,
 })
@@ -3109,9 +3274,16 @@ FruitAutoSection:AddToggle("AutoFindFruitToggle", {
 
 FruitAutoSection:AddToggle("AutoCollectFruitToggle", {
     Title = "Auto Nhặt Trái",
-    Description = "Tự động bay tới và nhặt trái",
+    Description = "Ưu tiên bay tới nhặt trái, sau đó tự quay lại farm",
     Default = _G.AutoCollectFruit,
-    Callback = function(v) _G.AutoCollectFruit = v end,
+    Callback = function(v)
+        local wasFruitMode = getActiveMovementMode() == "fruit"
+        _G.AutoCollectFruit = v
+        if not v then
+            activeFruitTarget = nil
+            if wasFruitMode then stopFarmMovement() end
+        end
+    end,
 })
 
 FruitAutoSection:AddToggle("FruitESPToggle", {
@@ -3151,7 +3323,7 @@ FruitActionSection:AddButton({
             return
         end
         for index, fruit in ipairs(fruits) do
-            local handle = fruit:FindFirstChild("Handle")
+            local handle = getFruitHandle(fruit)
             notify("🍎 Trái #" .. index, fruit.Name .. " tại " .. tostring(handle and handle.Position), 5)
         end
         notify("🔍 Quét xong", "Tìm thấy " .. #fruits .. " trái!", 3)
@@ -3313,7 +3485,7 @@ local IslandSection = TeleportTab:AddSection("Đảo tại Sea " .. WorldSea)
 
 -- Lấy danh sách đảo theo Sea hiện tại
 local currentIslands = getSeaIslands()
-local islandNames = {}
+islandNames = {}
 for name, _ in pairs(currentIslands) do
     table.insert(islandNames, name)
 end
@@ -3410,9 +3582,10 @@ FruitTeleportSection:AddButton({
     Description = "Tìm và bay tới trái ác quỷ gần nhất",
     Callback = function()
         local closestFruit = findNearestFruit()
-        if closestFruit and closestFruit:FindFirstChild("Handle") then
+        local handle = getFruitHandle(closestFruit)
+        if closestFruit and handle then
             notify("🍎 Fruit TP", "Bay tới " .. closestFruit.Name, 3)
-            toTarget(closestFruit.Handle.CFrame * CFrame.new(0, 2, 0))
+            toTarget(handle.CFrame * CFrame.new(0, 2, 0))
         else
             notify("❌", "Không tìm thấy trái trên map", 2)
         end
@@ -3868,6 +4041,7 @@ end
 
 
 RuntimeEnv.HAOTOOL_UI_READY = createdTabCount == 9
+RuntimeEnv.HAOTOOL_LAST_FATAL_ERROR = nil
 
 -- Thông báo load thành công
 notify(
@@ -3882,7 +4056,7 @@ notify(
 )
 
 print("=====================================")
-print("⚡ HAOTOOL v2.1.4 — LOADED SUCCESSFULLY")
+print("⚡ HAOTOOL v2.2.0 — LOADED SUCCESSFULLY")
 print("🌊 Sea: " .. WorldSea)
 print("📌 RightControl to toggle GUI")
 print("=====================================")
@@ -3908,14 +4082,28 @@ if writefile then
 end
 RuntimeEnv.HAOTOOL_SOURCE_SAVED = sourceSaved
 
+local function failStartup(message)
+    RuntimeEnv.HAOTOOL_RUN_TOKEN = {}
+    RuntimeEnv.HAOTOOL_RUNNING = nil
+    RuntimeEnv.HAOTOOL_UI_READY = false
+    RuntimeEnv.HAOTOOL_LAST_FATAL_ERROR = tostring(message)
+    if type(RuntimeEnv.HAOTOOL_DESTROY_UI) == "function" then
+        pcall(RuntimeEnv.HAOTOOL_DESTROY_UI)
+    end
+    RuntimeEnv.HAOTOOL_TOGGLE_MENU = nil
+    RuntimeEnv.HAOTOOL_DESTROY_UI = nil
+end
+
 local runner, compileError = loadstring(HAOTOOL_SOURCE)
 if not runner then
-    RuntimeEnv.HAOTOOL_RUNNING = nil
+    failStartup(compileError)
     warn("[HAOTOOL] Không biên dịch được tool: " .. tostring(compileError))
 else
     local ok, runError = pcall(runner)
     if not ok then
-        RuntimeEnv.HAOTOOL_RUNNING = nil
+        failStartup(runError)
         warn("[HAOTOOL] Tool gặp lỗi: " .. tostring(runError))
+    else
+        RuntimeEnv.HAOTOOL_LAST_FATAL_ERROR = nil
     end
 end
