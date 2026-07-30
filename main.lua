@@ -1571,8 +1571,7 @@ end
 local function startSelectedRaid()
     local now = os.clock()
     if isInRaid() then return false end
-    local level = Player:FindFirstChild("Data") and Player.Data:FindFirstChild("Level")
-        and Player.Data.Level.Value or 0
+    local level = getPlayerLevel()
     if WorldSea == 1 or level < 1100 then
         if now - lastRaidCapabilityWarning >= 15 then
             lastRaidCapabilityWarning = now
@@ -2082,12 +2081,13 @@ task.spawn(function()
         task.wait(0.3)
         if _G.AutoStats then
             runFeature("Auto Stats", function()
-                local points = Player.Data.Points.Value
-                if points > 0 then
+                local data = getPlayerData()
+                local pointsObj = data and data:FindFirstChild("Points")
+                if pointsObj and pointsObj.Value > 0 then
                     local statName = _G.StatToUpgrade == "Blox Fruit"
                         and "Demon Fruit" or _G.StatToUpgrade
                     ReplicatedStorage.Remotes.CommF_:InvokeServer(
-                        "AddPoint", statName, math.min(points, 3)
+                        "AddPoint", statName, math.min(pointsObj.Value, 3)
                     )
                 end
             end)
@@ -2387,8 +2387,7 @@ local function buildSystemDiagnostic()
         and ReplicatedStorage.Remotes:FindFirstChild("CommF_"))
     check("Folder Enemies", workspace:FindFirstChild("Enemies"))
     check("Dữ liệu quest Sea hiện tại", getQuestData(
-        Player:FindFirstChild("Data") and Player.Data:FindFirstChild("Level")
-            and Player.Data.Level.Value or 1
+        getPlayerLevel()
     ) ~= nil)
     check("VirtualInputManager", VirtualInputManager ~= nil)
 
@@ -3700,8 +3699,8 @@ UtilitySection:AddButton({
     Description = "Xem thông tin nhân vật hiện tại",
     Callback = function()
         pcall(function()
-            local lvl = Player.Data.Level.Value or "?"
-            local beli = Player.Data.Beli.Value or "?"
+            local lvl = getPlayerLevel()
+            local beli = getPlayerBeli()
             local frag = "?"
             pcall(function() frag = Player.Data.Fragments.Value end)
 
