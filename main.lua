@@ -523,6 +523,61 @@ local QuestsSea3 = {
     {MinLevel=2700, MaxLevel=2724, QuestName="SubmergedQuest3", QuestNumber=1, MobName="High Disciple", QuestNpc=Vector3.new(9640.088,-1992.445,9613.652), MobPosition=Vector3.new(9750.416,-1966.939,9753.360), Travel="Submerged"},
     {MinLevel=2725, MaxLevel=math.huge, QuestName="SubmergedQuest3", QuestNumber=2, MobName="Grand Devotee", QuestNpc=Vector3.new(9640.088,-1992.445,9613.652), MobPosition=Vector3.new(9611.705,-1993.471,9882.688), Travel="Submerged"},
 }
+
+-- ==================== BOSS QUEST DATA (3 SEA) ====================
+local BossQuestsSea1 = {
+    {MinLevel=25, MaxLevel=29, QuestName="JungleQuest", QuestNumber=3, MobName="The Gorilla King", QuestNpc=Vector3.new(-1598.089,35.550,153.378), MobPosition=Vector3.new(-1243.000,6.000,-493.000)},
+    {MinLevel=55, MaxLevel=59, QuestName="BuggyQuest1", QuestNumber=3, MobName="Bobby", QuestNpc=Vector3.new(-1141.075,4.100,3831.550), MobPosition=Vector3.new(-1145.000,14.000,4300.000)},
+    {MinLevel=110, MaxLevel=119, QuestName="SnowQuest", QuestNumber=3, MobName="Yeti", QuestNpc=Vector3.new(1389.745,88.152,-1298.908), MobPosition=Vector3.new(1313.000,26.000,-4641.000)},
+    {MinLevel=130, MaxLevel=149, QuestName="MarineQuest2", QuestNumber=2, MobName="Vice Admiral", QuestNpc=Vector3.new(-5039.586,27.350,4324.680), MobPosition=Vector3.new(-5036.000,24.000,4317.000)},
+    {MinLevel=175, MaxLevel=199, QuestName="PrisonerQuest", QuestNumber=3, MobName="Warden", QuestNpc=Vector3.new(5308.931,1.655,475.121), MobPosition=Vector3.new(4875.000,5.000,735.000)},
+    {MinLevel=200, MaxLevel=224, QuestName="ImpelQuest", QuestNumber=1, MobName="Chief Warden", QuestNpc=Vector3.new(5308.931,1.655,475.121), MobPosition=Vector3.new(5060.000,5.000,890.000)},
+    {MinLevel=225, MaxLevel=249, QuestName="ImpelQuest", QuestNumber=2, MobName="Swan", QuestNpc=Vector3.new(5308.931,1.655,475.121), MobPosition=Vector3.new(-1516.000,7.000,-2994.000)},
+    {MinLevel=350, MaxLevel=374, QuestName="MagmaQuest", QuestNumber=3, MobName="Magma Admiral", QuestNpc=Vector3.new(-5313.370,10.950,8515.294), MobPosition=Vector3.new(-5400.000,8.000,8500.000)},
+    {MinLevel=425, MaxLevel=449, QuestName="FishmanQuest", QuestNumber=3, MobName="Fishman Lord", QuestNpc=Vector3.new(61122.652,18.497,1569.400), MobPosition=Vector3.new(61163.000,11.000,1819.000), Entrance=Vector3.new(61163.852,11.680,1819.785)},
+    {MinLevel=500, MaxLevel=524, QuestName="SkyExp1Quest", QuestNumber=3, MobName="Wysper", QuestNpc=Vector3.new(-7859.098,5544.190,-381.476), MobPosition=Vector3.new(-4720.000,845.000,-1950.000), Entrance=Vector3.new(-7894.618,5547.142,-380.291)},
+    {MinLevel=575, MaxLevel=624, QuestName="SkyExp2Quest", QuestNumber=3, MobName="Thunder God", QuestNpc=Vector3.new(-7906.816,5634.663,-1411.992), MobPosition=Vector3.new(-7800.000,5600.000,-1600.000), Entrance=Vector3.new(-7894.618,5547.142,-380.291)},
+    {MinLevel=675, MaxLevel=699, QuestName="FountainQuest", QuestNumber=3, MobName="Cyborg", QuestNpc=Vector3.new(5259.820,37.350,4050.029), MobPosition=Vector3.new(5600.000,5.000,4400.000)},
+}
+
+local BossQuestsSea2 = {
+    {MinLevel=750, MaxLevel=774, QuestName="Area1Quest", QuestNumber=3, MobName="Diamond", QuestNpc=Vector3.new(-429.544,71.770,1836.182), MobPosition=Vector3.new(-432.000,73.000,299.000)},
+    {MinLevel=850, MaxLevel=874, QuestName="Area2Quest", QuestNumber=3, MobName="Jeremy", QuestNpc=Vector3.new(638.438,71.770,918.283), MobPosition=Vector3.new(-5465.000,87.000,-782.000)},
+    {MinLevel=925, MaxLevel=949, QuestName="MarineQuest3", QuestNumber=3, MobName="Fajita", QuestNpc=Vector3.new(-2440.796,71.714,-3216.068), MobPosition=Vector3.new(-5700.000,15.000,-3050.000)},
+    {MinLevel=1000, MaxLevel=1049, QuestName="SnowMountainQuest", QuestNumber=3, MobName="Don Swan", QuestNpc=Vector3.new(609.859,400.120,-5372.259), MobPosition=Vector3.new(-456.000,10.000,-1867.000)},
+    {MinLevel=1150, MaxLevel=1174, QuestName="IceSideQuest", QuestNumber=3, MobName="Smoke Admiral", QuestNpc=Vector3.new(-6064.069,15.242,-4902.979), MobPosition=Vector3.new(-5700.000,15.000,-3050.000)},
+    {MinLevel=1250, MaxLevel=1274, QuestName="FireSideQuest", QuestNumber=3, MobName="Magma Admiral", QuestNpc=Vector3.new(-5428.032,15.062,-5299.435), MobPosition=Vector3.new(-5700.000,15.000,-3050.000)},
+    {MinLevel=1400, MaxLevel=1424, QuestName="FrostQuest", QuestNumber=3, MobName="Awakened Ice Admiral", QuestNpc=Vector3.new(5667.658,26.800,-6486.090), MobPosition=Vector3.new(6400.000,340.000,-6890.000)},
+    {MinLevel=1475, MaxLevel=1499, QuestName="ForgottenQuest", QuestNumber=3, MobName="Tide Keeper", QuestNpc=Vector3.new(-3054.445,235.544,-10142.819), MobPosition=Vector3.new(-3570.000,123.000,-11556.000)},
+}
+
+local BossQuestsSea3 = {
+    {MinLevel=1550, MaxLevel=1574, QuestName="PiratePortQuest", QuestNumber=3, MobName="Stone", QuestNpc=Vector3.new(-290.075,42.903,5581.590), MobPosition=Vector3.new(-1085.000,40.000,6779.000)},
+    {MinLevel=1675, MaxLevel=1699, QuestName="AmazonQuest2", QuestNumber=3, MobName="Island Empress", QuestNpc=Vector3.new(5448.861,601.532,751.114), MobPosition=Vector3.new(5659.000,602.000,244.000)},
+    {MinLevel=1750, MaxLevel=1774, QuestName="MarineTreeIsland", QuestNumber=3, MobName="Kilo Admiral", QuestNpc=Vector3.new(2180.541,27.816,-6741.550), MobPosition=Vector3.new(2846.000,433.000,-7100.000)},
+    {MinLevel=1875, MaxLevel=1899, QuestName="DeepForestIsland", QuestNumber=3, MobName="Captain Elephant", QuestNpc=Vector3.new(-13234.040,331.488,-7625.401), MobPosition=Vector3.new(-13221.000,325.000,-8405.000)},
+    {MinLevel=1950, MaxLevel=1974, QuestName="DeepForestIsland2", QuestNumber=3, MobName="Beautiful Pirate", QuestNpc=Vector3.new(-12680.382,389.971,-9902.020), MobPosition=Vector3.new(5182.000,23.000,-20.000)},
+    {MinLevel=2175, MaxLevel=2199, QuestName="IceCreamIslandQuest", QuestNumber=3, MobName="Cake Queen", QuestNpc=Vector3.new(-820.648,65.820,-10965.796), MobPosition=Vector3.new(-821.000,66.000,-10965.000)},
+}
+
+local function getAvailableBossQuest(level)
+    local bossTable
+    if WorldSea == 1 then bossTable = BossQuestsSea1
+    elseif WorldSea == 2 then bossTable = BossQuestsSea2
+    elseif WorldSea == 3 then bossTable = BossQuestsSea3
+    else bossTable = BossQuestsSea1
+    end
+
+    for _, bossQuest in ipairs(bossTable) do
+        if level >= bossQuest.MinLevel and level <= bossQuest.MaxLevel then
+            local bossMob = findBoss(bossQuest.MobName)
+            if bossMob then
+                return bossQuest, bossMob
+            end
+        end
+    end
+    return nil, nil
+end
 -- ==================== BOSS DATA ====================
 local BossesSea1 = {
     {Name="Gorilla King",     Level=25,   Position=Vector3.new(-1243,6,-493)},
@@ -1720,55 +1775,70 @@ end
 -- PHẦN 6: VÒNG LẶP NỀN (BACKGROUND LOOPS)
 ------------------------------------------------------------
 
--- ====== LOOP 1: Auto Farm Level ======
+-- ====== LOOP 1: Auto Farm Level (Tự động nhận Quest Boss khi có Boss) ======
 task.spawn(function()
     while RuntimeEnv.HAOTOOL_RUN_TOKEN == CurrentRunToken do
         task.wait(0.03)
 
         if _G.AutoFarmLevel and modeCanMove("level") then
             runFeature("Auto Farm Level", function()
-                local level = Player.Data.Level.Value
-                local quest = getQuestData(level)
-                if not quest then return end
+                local level = getPlayerLevel()
+                local normalQuest = getQuestData(level)
+                if not normalQuest then return end
 
-                if _G.FarmMethod == "Quest" and hasActiveQuest()
-                    and acceptedQuestSignature ~= nil
-                    and acceptedQuestSignature ~= questSignature(quest) then
-                    abandonQuest()
-                    acceptedQuestSignature = nil
-                    task.wait(0.35)
-                    return
+                local questToUse = normalQuest
+                local targetMob = nil
+                local isBossTarget = false
+
+                -- Tự động phát hiện Boss cùng tầm level đang có mặt trên server
+                local bossQuest, bossMob = getAvailableBossQuest(level)
+                if bossQuest and bossMob then
+                    questToUse = bossQuest
+                    targetMob = bossMob
+                    isBossTarget = true
+                end
+
+                if _G.FarmMethod == "Quest" and hasActiveQuest() then
+                    if acceptedQuestSignature ~= nil and acceptedQuestSignature ~= questSignature(questToUse) then
+                        abandonQuest()
+                        acceptedQuestSignature = nil
+                        task.wait(0.35)
+                        return
+                    end
                 end
 
                 if not hasActiveQuest() then
-                    startQuest(quest)
+                    startQuest(questToUse)
                     return
                 end
 
-                local targetMob = nil
-                if _G.FarmMethod == "Quest" then
-                    targetMob = findMob(quest.MobName, false)
-                elseif _G.FarmMethod == "Nearest" then
-                    targetMob = findMob("", true)
-                elseif _G.FarmMethod == "Selected Mob" then
-                    targetMob = findMob(_G.SelectedMob, false)
-                else
-                    targetMob = findMob(quest.MobName, false)
+                if not isBossTarget then
+                    if _G.FarmMethod == "Quest" then
+                        targetMob = findMob(questToUse.MobName, false)
+                    elseif _G.FarmMethod == "Nearest" then
+                        targetMob = findMob("", true)
+                    elseif _G.FarmMethod == "Selected Mob" then
+                        targetMob = findMob(_G.SelectedMob, false)
+                    else
+                        targetMob = findMob(questToUse.MobName, false)
+                    end
                 end
 
                 if not targetMob then
                     clearFarmTarget()
-                    if ensureQuestArea(quest) then
-                        toTarget(CFrame.new(quest.MobPosition))
+                    if ensureQuestArea(questToUse) then
+                        toTarget(CFrame.new(questToUse.MobPosition))
                     end
                     return
                 end
 
-                local bringName = quest.MobName
-                if _G.FarmMethod == "Nearest" then
-                    bringName = targetMob.Name
-                elseif _G.FarmMethod == "Selected Mob" then
-                    bringName = _G.SelectedMob
+                local bringName = questToUse.MobName
+                if not isBossTarget then
+                    if _G.FarmMethod == "Nearest" then
+                        bringName = targetMob.Name
+                    elseif _G.FarmMethod == "Selected Mob" then
+                        bringName = _G.SelectedMob
+                    end
                 end
 
                 engageTarget(targetMob, bringName, _G.SelectWeapon)
