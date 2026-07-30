@@ -666,20 +666,17 @@ local function checkHaki()
     end
 end
 
+-- Hàm đánh an toàn: CHỈ dùng tool:Activate()
+-- KHÔNG dùng VirtualUser/VirtualInputManager vì chúng chiếm quyền input toàn cục,
+-- khiến người chơi không bấm được GUI nữa.
 local function attack()
     checkHaki()
     local char = Player.Character
-    if char then
-        local tool = char:FindFirstChildOfClass("Tool")
-        if tool then
-            tool:Activate()
-        end
+    if not char then return end
+    local tool = char:FindFirstChildOfClass("Tool")
+    if tool then
+        tool:Activate()
     end
-    pcall(function()
-        VirtualUser:Button1Down(Vector2.new(500, 500))
-        task.wait(0.01)
-        VirtualUser:Button1Up(Vector2.new(500, 500))
-    end)
 end
 
 local function equipWeapon(weaponType)
@@ -735,9 +732,11 @@ local function getQuestData(level)
 end
 
 -- Task Loops
+-- QUAN TRỌNG: task.wait(0.15) thay vì 0.05 để trả lại CPU cho UI rendering
+-- Không dùng toTarget (blocking tween) khi đang đánh quái, chỉ CFrame trực tiếp
 task.spawn(function()
     while true do
-        task.wait(0.05)
+        task.wait(0.15) -- Giảm tốc vòng lặp: cho phép GUI xử lý touch/click
         if _G.AutoFarmLevel then
             pcall(function()
                 local level = Player.Data.Level.Value
@@ -747,8 +746,9 @@ task.spawn(function()
                 local hasQuest = questGui and questGui.Visible
                 
                 if not hasQuest then
+                    -- Bay tới NPC nhận quest (dùng toTarget vì cần bay xa)
                     toTarget(CFrame.new(quest.QuestNpc))
-                    task.wait(0.3)
+                    task.wait(0.5)
                     ReplicatedStorage.Remotes.CommF_:InvokeServer("StartQuest", quest.QuestName, quest.QuestNumber)
                 else
                     local targetMob = nil
@@ -762,14 +762,15 @@ task.spawn(function()
                     end
                     
                     if not targetMob then
+                        -- Bay tới khu vực quái (dùng toTarget)
                         toTarget(CFrame.new(quest.MobPosition))
                     else
+                        -- ĐÁNH QUÁI: Chỉ dùng CFrame trực tiếp, KHÔNG dùng toTarget/tween
                         equipWeapon(_G.SelectWeapon)
                         local char = Player.Character
                         if char and char:FindFirstChild("HumanoidRootPart") and targetMob:FindFirstChild("HumanoidRootPart") then
                             setNoclip(true)
-                            local farmPos = targetMob.HumanoidRootPart.CFrame * CFrame.new(0, 7, 0)
-                            char.HumanoidRootPart.CFrame = CFrame.new(farmPos.Position, targetMob.HumanoidRootPart.Position)
+                            char.HumanoidRootPart.CFrame = targetMob.HumanoidRootPart.CFrame * CFrame.new(0, 7, 0)
                             if _G.BringMob then bringMobsNear(quest.MobName, targetMob.HumanoidRootPart.CFrame) end
                             attack()
                         end
@@ -843,7 +844,10 @@ UserInputService.JumpRequest:Connect(function()
     end
 end)
 
+-- Anti-AFK: Chỉ chạy khi player thực sự idle, không chiếm quyền input liên tục
 Player.Idled:Connect(function()
-    VirtualUser:CaptureController()
-    VirtualUser:ClickButton2(Vector2.new(0, 0))
+    pcall(function()
+        VirtualUser:CaptureController()
+        VirtualUser:ClickButton2(Vector2.new(0, 0))
+    end)
 end)
