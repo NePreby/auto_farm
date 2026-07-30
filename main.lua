@@ -1,6 +1,6 @@
 local HAOTOOL_SOURCE = [========[
 local RuntimeEnv = getgenv and getgenv() or _G
-local RequestedScriptVersion = "2.3.0"
+local RequestedScriptVersion = "2.3.1"
 if RuntimeEnv.HAOTOOL_RUNNING then
     -- Khi người dùng bấm EXECUTE lại trong Delta X: Xóa giao diện cũ và dựng lại giao diện mới 100%
     if type(RuntimeEnv.HAOTOOL_DESTROY_UI) == "function" then
@@ -22,7 +22,7 @@ RuntimeEnv.HAOTOOL_TAB_COUNT = 0
 
 --[[
     ================================================================================
-    ⚡ HAOTOOL | BLOX FRUITS V2.3.0 — STABLE EDITION
+    ⚡ HAOTOOL | BLOX FRUITS V2.3.1 — STABLE EDITION
     --------------------------------------------------------------------------------
     Developer   : HAOTOOL Team
     UI Library  : Fluent (Dark Theme)
@@ -302,6 +302,8 @@ setDefault("AutoStats", false)
 setDefault("StatToUpgrade", "Melee")
 setDefault("ServerHopNoFruit", false)
 setDefault("LowServerMaxPlayers", 5)
+setDefault("AutoChooseTeam", true)
+setDefault("PreferredTeam", "Pirates")
 
 -- Teleport
 setDefault("SelectedIsland", "")
@@ -338,6 +340,7 @@ local TELEPORT_STATE_KEYS = {
     "WalkSpeedHack", "WalkSpeedVal", "JumpPowerHack", "JumpPowerVal",
     "InfiniteJump", "InfiniteEnergy", "AntiAFK",
     "AutoStats", "StatToUpgrade", "ServerHopNoFruit", "LowServerMaxPlayers",
+    "AutoChooseTeam", "PreferredTeam",
     "SelectedIsland", "SelectedNPC", "SelectedBossTP",
 }
 
@@ -2019,6 +2022,132 @@ local function notify(title, content, duration)
     end)
 end
 
+-- ====== Tự chọn phe khi vào game / đổi máy chủ ======
+local lastTeamAttempt = 0
+
+local function normalizedPreferredTeam()
+    return _G.PreferredTeam == "Marines" and "Marines" or "Pirates"
+end
+
+local function findPreferredTeamButton(teamName)
+    local playerGui = Player:FindFirstChild("PlayerGui")
+    local mainGui = playerGui and playerGui:FindFirstChild("Main")
+    local chooseGui = mainGui and mainGui:FindFirstChild("ChooseTeam", true)
+    if not chooseGui then return nil end
+
+    local wanted = teamName == "Marines"
+        and {"marines", "marine", "hải quân"}
+        or {"pirates", "pirate", "hải tặc"}
+
+    for _, object in ipairs(chooseGui:GetDescendants()) do
+        if object:IsA("GuiButton") then
+            local parts = {object.Name}
+            if object:IsA("TextButton") then
+                table.insert(parts, object.Text)
+            end
+
+            local ancestor = object.Parent
+            for _ = 1, 3 do
+                if not ancestor then break end
+                table.insert(parts, ancestor.Name)
+                for _, child in ipairs(ancestor:GetChildren()) do
+                    if child:IsA("TextLabel") then
+                        table.insert(parts, child.Text)
+                    end
+                end
+                ancestor = ancestor.Parent
+            end
+
+            local text = string.lower(table.concat(parts, " "))
+            for _, keyword in ipairs(wanted) do
+                if string.find(text, keyword, 1, true) then
+                    return object
+                end
+            end
+        end
+    end
+    return nil
+end
+
+local function activateTeamButton(button)
+    if not button then return false end
+    local fired = false
+    pcall(function()
+        if type(firesignal) == "function" then
+            firesignal(button.Activated)
+            fired = true
+            if button:IsA("TextButton") or button:IsA("ImageButton") then
+                firesignal(button.MouseButton1Click)
+            end
+        elseif type(getconnections) == "function" then
+            for _, connection in ipairs(getconnections(button.Activated)) do
+                if connection.Fire then
+                    connection:Fire()
+                    fired = true
+                elseif connection.Function then
+                    task.spawn(connection.Function)
+                    fired = true
+                end
+            end
+        end
+    end)
+    return fired
+end
+
+local function choosePreferredTeam(force)
+    if not force and not _G.AutoChooseTeam then
+        return false, "Tự chọn phe đang tắt."
+    end
+    if Player.Team ~= nil and not force then
+        return true, "Nhân vật đã có phe."
+    end
+
+    local now = os.clock()
+    if not force and now - lastTeamAttempt < 1 then
+        return false, "Đang chờ lần thử kế tiếp."
+    end
+    lastTeamAttempt = now
+
+    local teamName = normalizedPreferredTeam()
+    local remoteSent = false
+    pcall(function()
+        local remotes = ReplicatedStorage:FindFirstChild("Remotes")
+        local commF = remotes and remotes:FindFirstChild("CommF_")
+        if commF and commF:IsA("RemoteFunction") then
+            commF:InvokeServer("SetTeam", teamName)
+            remoteSent = true
+        end
+    end)
+
+    task.wait(0.35)
+    if Player.Team ~= nil then
+        return true, "Đã chọn phe."
+    end
+
+    local button = findPreferredTeamButton(teamName)
+    local buttonFired = activateTeamButton(button)
+    if buttonFired then task.wait(0.35) end
+
+    if Player.Team ~= nil then
+        return true, "Đã chọn phe."
+    end
+    if remoteSent or buttonFired then
+        return true, "Đã gửi yêu cầu chọn phe."
+    end
+    return false, "Chưa tìm thấy màn hình hoặc nút chọn phe."
+end
+
+task.spawn(function()
+    while RuntimeEnv.HAOTOOL_RUN_TOKEN == CurrentRunToken do
+        if _G.AutoChooseTeam and Player.Team == nil then
+            choosePreferredTeam(false)
+            task.wait(0.7)
+        else
+            task.wait(2)
+        end
+    end
+end)
+
 -- ====== Raid helpers: mua chip rồi bấm nút raid thật trên bản đồ ======
 local lastRaidStartAttempt = 0
 local lastRaidCapabilityWarning = 0
@@ -2877,6 +3006,9 @@ end)
 Player.CharacterAdded:Connect(function(char)
     if RuntimeEnv.HAOTOOL_RUN_TOKEN ~= CurrentRunToken then return end
     task.wait(1)
+    if _G.AutoChooseTeam and Player.Team == nil then
+        choosePreferredTeam(false)
+    end
     if _G.AutoFarmLevel or _G.AutoFarmMastery or _G.AutoFarmBoss then
         notify("💀 Đã hồi sinh", "Tiếp tục hoạt động tự động...", 3)
     end
@@ -3308,6 +3440,15 @@ local statValueToLabel = {
     ["Gun"] = "Súng",
     ["Blox Fruit"] = "Trái ác quỷ",
 }
+local teamLabels = {"Hải Tặc", "Hải Quân"}
+local teamLabelToValue = {
+    ["Hải Tặc"] = "Pirates",
+    ["Hải Quân"] = "Marines",
+}
+local teamValueToLabel = {
+    ["Pirates"] = "Hải Tặc",
+    ["Marines"] = "Hải Quân",
+}
 
 local function refreshBossCache()
     currentBossNames = getBossList()
@@ -3356,6 +3497,40 @@ ServerSection:AddSlider("LowServerMaxPlayersSlider", {
     Default = _G.LowServerMaxPlayers,
     Rounding = 0,
     Callback = function(v) _G.LowServerMaxPlayers = v end,
+})
+
+ServerSection:AddToggle("AutoChooseTeamToggle", {
+    Title = "Tự chọn phe khi vào game",
+    Description = "Tự chọn lại phe sau khi vào game hoặc đổi máy chủ.",
+    Default = _G.AutoChooseTeam,
+    Callback = function(v)
+        _G.AutoChooseTeam = v
+        if v and Player.Team == nil then
+            task.spawn(function() choosePreferredTeam(true) end)
+        end
+    end,
+})
+
+ServerSection:AddDropdown("PreferredTeamDrop", {
+    Title = "Phe ưu tiên",
+    Description = "Phe sẽ tự chọn ở màn hình bắt đầu.",
+    Values = teamLabels,
+    Default = teamValueToLabel[_G.PreferredTeam] or teamLabels[1],
+    Callback = function(v)
+        _G.PreferredTeam = teamLabelToValue[v] or _G.PreferredTeam
+    end,
+})
+
+ServerSection:AddButton({
+    Title = "Chọn phe ngay",
+    Description = "Gửi lại yêu cầu nếu đang dừng ở màn hình chọn phe.",
+    Callback = function()
+        task.spawn(function()
+            local ok, message = choosePreferredTeam(true)
+            local label = teamValueToLabel[normalizedPreferredTeam()] or normalizedPreferredTeam()
+            notify(ok and "Đã chọn phe" or "Chưa chọn được phe", ok and label or tostring(message), 4)
+        end)
+    end,
 })
 
 ServerSection:AddButton({
@@ -4558,6 +4733,8 @@ if type(teleportState) == "table" and Fluent and Fluent.Options then
         AntiAFKToggle = "AntiAFK",
         ServerHopNoFruitToggle = "ServerHopNoFruit",
         LowServerMaxPlayersSlider = "LowServerMaxPlayers",
+        AutoChooseTeamToggle = "AutoChooseTeam",
+        PreferredTeamDrop = "PreferredTeam",
         ESPPlayerColor = "ESPPlayerColor",
         ESPMobColorPick = "ESPMobColor",
         ESPBossColorPick = "ESPBossColor",
@@ -4575,6 +4752,8 @@ if type(teleportState) == "table" and Fluent and Fluent.Options then
                 displayValue = farmMethodValueToLabel[value] or value
             elseif optionId == "StatDropdown" then
                 displayValue = statValueToLabel[value] or value
+            elseif optionId == "PreferredTeamDrop" then
+                displayValue = teamValueToLabel[value] or value
             elseif optionId == "SelectedBossDrop" or optionId == "BossTPDrop" then
                 displayValue = bossNameToStatusLabel[value] or value
             end
@@ -4604,7 +4783,7 @@ notify(
 )
 
 print("=====================================")
-print("⚡ HAOTOOL v2.3.0 — ĐÃ KHỞI ĐỘNG THÀNH CÔNG")
+print("⚡ HAOTOOL v2.3.1 — ĐÃ KHỞI ĐỘNG THÀNH CÔNG")
 print("🌊 Biển: " .. WorldSea)
 print("📌 RightControl để ẩn hoặc hiện giao diện")
 print("=====================================")
