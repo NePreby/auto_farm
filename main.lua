@@ -2445,18 +2445,16 @@ local Window = Fluent:CreateWindow({
 -- ====== LOGO NỔI: LUÔN CÓ THỂ MỞ LẠI MENU ======
 local function setMainWindowVisible(visible)
     pcall(function()
-        if Fluent and Fluent.GUI and typeof(Fluent.GUI) == "Instance" then
-            Fluent.GUI.Enabled = visible
+        if Fluent and Fluent.GUI then
+            Fluent.GUI.Enabled = true
         end
         if Window then
-            pcall(function()
-                if Window.Minimize then
-                    Window:Minimize(not visible)
-                end
-            end)
             if Window.Root then
                 Window.Root.Visible = visible
-                Window.Minimized = not visible
+            end
+            Window.Minimized = not visible
+            if Window.Minimize then
+                pcall(function() Window:Minimize(not visible) end)
             end
         end
     end)
@@ -2509,8 +2507,8 @@ end
 local function toggleMainWindow()
     pcall(function()
         if Window and Window.Root and Window.Root.Parent then
-            local isVis = Window.Root.Visible and not Window.Minimized
-            setMainWindowVisible(not isVis)
+            local isCurrentlyVisible = Window.Root.Visible and not Window.Minimized
+            setMainWindowVisible(not isCurrentlyVisible)
         else
             rebuildMainInterface()
         end
@@ -2520,14 +2518,17 @@ end
 RuntimeEnv.HAOTOOL_TOGGLE_MENU = toggleMainWindow
 
 local function createLauncherButton()
-    local targetContainer = game:GetService("CoreGui")
-    pcall(function()
-        local pGui = Player:FindFirstChild("PlayerGui")
-        if pGui then targetContainer = pGui end
-    end)
+    local coreGui = game:GetService("CoreGui")
+    local playerGui = Player:FindFirstChild("PlayerGui")
 
-    local oldLauncher = targetContainer:FindFirstChild("HAOTOOL_Launcher") or game:GetService("CoreGui"):FindFirstChild("HAOTOOL_Launcher")
-    if oldLauncher then oldLauncher:Destroy() end
+    local function destroyOld(container)
+        if container then
+            local old = container:FindFirstChild("HAOTOOL_Launcher")
+            if old then pcall(function() old:Destroy() end) end
+        end
+    end
+    destroyOld(coreGui)
+    destroyOld(playerGui)
 
     local launcherGui = Instance.new("ScreenGui")
     launcherGui.Name = "HAOTOOL_Launcher"
@@ -2535,7 +2536,11 @@ local function createLauncherButton()
     launcherGui.IgnoreGuiInset = true
     launcherGui.DisplayOrder = 1000000
     launcherGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-    launcherGui.Parent = targetContainer
+
+    local okParent = pcall(function() launcherGui.Parent = coreGui end)
+    if not okParent or not launcherGui.Parent then
+        pcall(function() launcherGui.Parent = playerGui or Player:WaitForChild("PlayerGui") end)
+    end
 
     pcall(function()
         local protect = protectgui or (syn and syn.protect_gui)
@@ -2575,7 +2580,7 @@ local function createLauncherButton()
     gradient.Rotation = 45
     gradient.Parent = button
 
-    -- Kéo thả nút mượt mà không làm chặn sự kiện Click
+    -- Kéo thả nút mượt mà + Nhấp vào để Bật/Tắt Menu 100%
     local dragging = false
     local dragStart, startPos = nil, nil
 
@@ -2584,11 +2589,21 @@ local function createLauncherButton()
             dragging = true
             dragStart = input.Position
             startPos = button.Position
-            input.Changed:Connect(function()
-                if input.UserInputState == Enum.UserInputState.End then
-                    dragging = false
+        end
+    end)
+
+    button.InputEnded:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+            if dragging then
+                dragging = false
+                local dist = 0
+                if dragStart and input.Position then
+                    dist = (input.Position - dragStart).Magnitude
                 end
-            end)
+                if dist < 10 then
+                    toggleMainWindow()
+                end
+            end
         end
     end)
 
@@ -2599,14 +2614,8 @@ local function createLauncherButton()
         end
     end)
 
-    local function handleToggle()
-        if not dragging or (dragStart and (button.Position.X.Offset - startPos.X.Offset)^2 + (button.Position.Y.Offset - startPos.Y.Offset)^2 < 25) then
-            toggleMainWindow()
-        end
-    end
-
-    button.Activated:Connect(handleToggle)
-    button.MouseButton1Click:Connect(handleToggle)
+    button.Activated:Connect(toggleMainWindow)
+    button.MouseButton1Click:Connect(toggleMainWindow)
     return launcherGui
 end
 
