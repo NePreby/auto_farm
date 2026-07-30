@@ -1,3 +1,13 @@
+local HAOTOOL_SOURCE = [========[
+local RuntimeEnv = getgenv and getgenv() or _G
+if RuntimeEnv.HAOTOOL_RUNNING then
+    if type(RuntimeEnv.HAOTOOL_TOGGLE_MENU) == "function" then
+        pcall(RuntimeEnv.HAOTOOL_TOGGLE_MENU)
+    end
+    return
+end
+RuntimeEnv.HAOTOOL_RUNNING = true
+
 --[[
     ================================================================================
     ⚡ HAOTOOL | BLOX FRUITS V2.0 — ULTIMATE EDITION
@@ -95,8 +105,9 @@ _G.FarmHeight        = 8
 _G.FarmDistance      = 0
 _G.HoldFarmPosition  = true
 _G.FreezeTarget      = true
-_G.AttackDelay       = 0.08
+_G.AttackDelay       = 0.05
 _G.HitboxSize        = 12
+_G.SafetyMode        = true
 _G.AutoSkill         = false
 _G.SkillCooldown     = 1.5
 
@@ -150,6 +161,124 @@ _G.ServerHopNoFruit  = false
 
 -- Teleport
 _G.SelectedIsland    = ""
+
+-- ====== GIỮ TRẠNG THÁI KHI CHUYỂN SERVER ======
+local teleportState = RuntimeEnv.HAOTOOL_TELEPORT_STATE
+RuntimeEnv.HAOTOOL_TELEPORT_STATE = nil
+
+if type(teleportState) == "table" then
+    for key, value in pairs(teleportState) do
+        _G[key] = value
+    end
+end
+
+local TELEPORT_STATE_KEYS = {
+    "AutoFarmLevel", "AutoFarmMastery", "MasteryWeapon",
+    "AutoFarmBoss", "SelectedBoss", "AutoFarmSeaBeast",
+    "AutoFarmObs", "AutoFarmBone", "AutoFarmFragment",
+    "SelectWeapon", "FarmMethod", "SelectedMob",
+    "BringMob", "BringRadius", "FarmHeight", "FarmDistance",
+    "HoldFarmPosition", "FreezeTarget", "AttackDelay", "HitboxSize",
+    "SafetyMode", "AutoSkill", "SkillCooldown",
+    "AutoRaid", "AutoRaidFarm", "AutoAwakening", "RaidChip",
+    "AutoHaki", "AutoKen", "AutoObsV2", "AutoDodge",
+    "AutoFruitFinder", "AutoCollectFruit", "AutoGachaFruit",
+    "SelectedIsland",
+}
+
+local TELEPORT_FOLDER = "HaoToolHub"
+local TELEPORT_STATE_FILE = TELEPORT_FOLDER .. "/session.json"
+local TELEPORT_SCRIPT_FILE = TELEPORT_FOLDER .. "/autoload.lua"
+local lastTeleportStateJson = ""
+
+local function collectTeleportState()
+    local state = {}
+    for _, key in ipairs(TELEPORT_STATE_KEYS) do
+        local value = _G[key]
+        local valueType = type(value)
+        if valueType == "boolean" or valueType == "number" or valueType == "string" then
+            state[key] = value
+        end
+    end
+    return state
+end
+
+local function ensureTeleportFolder()
+    pcall(function()
+        if makefolder and (not isfolder or not isfolder(TELEPORT_FOLDER)) then
+            makefolder(TELEPORT_FOLDER)
+        end
+    end)
+end
+
+local function saveTeleportState()
+    if type(writefile) ~= "function" then return false end
+    ensureTeleportFolder()
+
+    local ok, encoded = pcall(function()
+        return game:GetService("HttpService"):JSONEncode(collectTeleportState())
+    end)
+    if not ok or encoded == lastTeleportStateJson then return ok end
+
+    local saved = pcall(function()
+        writefile(TELEPORT_STATE_FILE, encoded)
+    end)
+    if saved then lastTeleportStateJson = encoded end
+    return saved
+end
+
+local function setupTeleportReload()
+    local queueTeleport = queue_on_teleport or queueonteleport
+        or (syn and syn.queue_on_teleport)
+    if type(queueTeleport) ~= "function" or type(readfile) ~= "function"
+        or RuntimeEnv.HAOTOOL_SOURCE_SAVED ~= true then
+        return false
+    end
+    if RuntimeEnv.HAOTOOL_TELEPORT_QUEUED then return true end
+
+    local queuedLoader = [==[
+local env = getgenv and getgenv() or _G
+env.HAOTOOL_RUNNING = nil
+env.HAOTOOL_TOGGLE_MENU = nil
+env.HAOTOOL_TELEPORT_QUEUED = nil
+env.HAOTOOL_SOURCE_SAVED = true
+pcall(function()
+    env.HAOTOOL_TELEPORT_STATE = game:GetService("HttpService"):JSONDecode(
+        readfile("HaoToolHub/session.json")
+    )
+end)
+local source = readfile("HaoToolHub/autoload.lua")
+local runner, compileError = loadstring(source)
+if runner then
+    local ok, runError = pcall(runner)
+    if not ok then
+        env.HAOTOOL_RUNNING = nil
+        warn("[HAOTOOL] Auto reload lỗi: " .. tostring(runError))
+    end
+else
+    warn("[HAOTOOL] Không biên dịch được auto reload: " .. tostring(compileError))
+end
+    ]==]
+
+    local queued = pcall(queueTeleport, queuedLoader)
+    RuntimeEnv.HAOTOOL_TELEPORT_QUEUED = queued
+    return queued
+end
+
+local teleportReloadReady = setupTeleportReload()
+saveTeleportState()
+pcall(function()
+    Player.OnTeleport:Connect(function()
+        saveTeleportState()
+    end)
+end)
+
+task.spawn(function()
+    while task.wait(0.25) do
+        saveTeleportState()
+    end
+end)
+
 
 ------------------------------------------------------------
 -- PHẦN 3: DATABASE — QUEST, ĐẢO, BOSS (3 SEA)
@@ -436,7 +565,26 @@ local currentTween = nil
 local activeFarmTarget = nil
 local farmState = "idle"
 local lastAttackTime = 0
+local lastCombatMaintenance = 0
+local lastEquipCheck = 0
+local lastPreparedTarget = nil
 local restoreFrozenMobs = function() end
+local userPointerActive = false
+
+UserInputService.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1
+        or input.UserInputType == Enum.UserInputType.Touch then
+        userPointerActive = true
+    end
+end)
+
+UserInputService.InputEnded:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1
+        or input.UserInputType == Enum.UserInputType.Touch then
+        userPointerActive = false
+    end
+end)
+
 
 local function clearFarmTarget()
     activeFarmTarget = nil
@@ -573,10 +721,15 @@ local function checkHaki()
     end)
 end
 
--- Tool:Activate kết hợp click ảo để tương thích nhiều executor hơn.
+-- Kích hoạt Tool trực tiếp để không chiếm chuột và vẫn bấm được giao diện.
 local function attack()
-    local now = tick()
-    local delay = math.max(0.03, tonumber(_G.AttackDelay) or 0.08)
+    if userPointerActive or UserInputService:GetFocusedTextBox() then return end
+
+    local now = os.clock()
+    local delay = math.clamp(tonumber(_G.AttackDelay) or 0.05, 0.01, 0.50)
+    if _G.SafetyMode then
+        delay = math.max(delay, 0.05)
+    end
     if now - lastAttackTime < delay then return end
     lastAttackTime = now
 
@@ -587,17 +740,12 @@ local function attack()
     if not tool then return end
 
     pcall(function() tool:Activate() end)
-    pcall(function()
-        local input = game:GetService("VirtualInputManager")
-        input:SendMouseButtonEvent(0, 0, 0, true, game, 0)
-        task.wait(0.02)
-        input:SendMouseButtonEvent(0, 0, 0, false, game, 0)
-    end)
 end
 -- ====== Auto Skill (dùng Z, X, C, V) ======
 local lastSkillTime = 0
 local function useSkills()
     if not _G.AutoSkill then return end
+    if userPointerActive or UserInputService:GetFocusedTextBox() then return end
     if tick() - lastSkillTime < _G.SkillCooldown then return end
 
     pcall(function()
@@ -708,7 +856,8 @@ local function freezeMob(mob)
     rootPart.AssemblyLinearVelocity = Vector3.zero
     rootPart.AssemblyAngularVelocity = Vector3.zero
 
-    local hitboxSize = math.clamp(tonumber(_G.HitboxSize) or 12, 2, 40)
+    local hitboxLimit = _G.SafetyMode and 18 or 40
+    local hitboxSize = math.clamp(tonumber(_G.HitboxSize) or 12, 2, hitboxLimit)
     rootPart.Size = Vector3.new(hitboxSize, hitboxSize, hitboxSize)
 
     if _G.FreezeTarget then
@@ -746,7 +895,8 @@ local function bringMobsNear(targetName, centerCFrame)
         if not workspace:FindFirstChild("Enemies") then return end
         grantSimulationRadius()
 
-        local radius = math.clamp(tonumber(_G.BringRadius) or 300, 50, 1000)
+        local radiusLimit = _G.SafetyMode and 350 or 1000
+        local radius = math.clamp(tonumber(_G.BringRadius) or 300, 50, radiusLimit)
         for _, mob in pairs(workspace.Enemies:GetChildren()) do
             local humanoid = mob:FindFirstChildOfClass("Humanoid")
             local rootPart = mob:FindFirstChild("HumanoidRootPart")
@@ -779,11 +929,21 @@ local function engageTarget(target, targetName, weaponType)
     end
 
     holdFarmTarget(target)
-    grantSimulationRadius()
-    freezeMob(target)
-    bringMobsNear(targetName or target.Name, targetRoot.CFrame)
 
-    equipWeapon(weaponType or _G.SelectWeapon)
+    local now = os.clock()
+    if target ~= lastPreparedTarget or now - lastCombatMaintenance >= 0.15 then
+        grantSimulationRadius()
+        freezeMob(target)
+        bringMobsNear(targetName or target.Name, targetRoot.CFrame)
+        lastPreparedTarget = target
+        lastCombatMaintenance = now
+    end
+
+    if now - lastEquipCheck >= 0.35 then
+        equipWeapon(weaponType or _G.SelectWeapon)
+        lastEquipCheck = now
+    end
+
     attack()
     useSkills()
     return true
@@ -1113,7 +1273,7 @@ end
 -- ====== LOOP 1: Auto Farm Level ======
 task.spawn(function()
     while true do
-        task.wait(0.10)
+        task.wait(0.03)
 
         if _G.AutoFarmLevel then
             pcall(function()
@@ -1160,7 +1320,7 @@ end)
 -- ====== LOOP 2: Auto Farm Mastery ======
 task.spawn(function()
     while true do
-        task.wait(0.10)
+        task.wait(0.03)
 
         if _G.AutoFarmMastery and not _G.AutoFarmLevel and not _G.AutoFarmBoss then
             pcall(function()
@@ -1177,7 +1337,7 @@ end)
 -- ====== LOOP 3: Auto Farm Boss ======
 task.spawn(function()
     while true do
-        task.wait(0.10)
+        task.wait(0.03)
 
         if _G.AutoFarmBoss and not _G.AutoFarmLevel then
             pcall(function()
@@ -1199,7 +1359,7 @@ end)
 -- ====== LOOP 4: Auto Farm Sea Beast ======
 task.spawn(function()
     while true do
-        task.wait(0.15)
+        task.wait(0.05)
 
         if _G.AutoFarmSeaBeast and not _G.AutoFarmLevel and not _G.AutoFarmBoss and not _G.AutoFarmMastery then
             pcall(function()
@@ -1327,7 +1487,7 @@ end)
 -- ====== LOOP 8: Auto Raid ======
 task.spawn(function()
     while true do
-        task.wait(1)
+        task.wait((_G.AutoRaid and _G.AutoRaidFarm) and 0.03 or 1)
         if _G.AutoRaid then
             pcall(function()
                 -- Kiểm tra đang trong raid chưa
@@ -1668,6 +1828,91 @@ local Window = Fluent:CreateWindow({
     MinimizeKey = Enum.KeyCode.RightControl, -- Phím ẩn/hiện GUI
 })
 
+-- ====== LOGO NỔI: LUÔN CÓ THỂ MỞ LẠI MENU ======
+local function toggleMainWindow()
+    pcall(function()
+        if Window and Window.Root and Window.Root.Parent then
+            Window:Minimize()
+        end
+    end)
+end
+
+RuntimeEnv.HAOTOOL_TOGGLE_MENU = toggleMainWindow
+
+local function createLauncherButton()
+    local coreGui = game:GetService("CoreGui")
+    local oldLauncher = coreGui:FindFirstChild("HAOTOOL_Launcher")
+    if oldLauncher then oldLauncher:Destroy() end
+
+    local launcherGui = Instance.new("ScreenGui")
+    launcherGui.Name = "HAOTOOL_Launcher"
+    launcherGui.ResetOnSpawn = false
+    launcherGui.IgnoreGuiInset = true
+    launcherGui.DisplayOrder = 1000000
+    launcherGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+    launcherGui.Parent = coreGui
+
+    pcall(function()
+        local protect = protectgui or (syn and syn.protect_gui)
+        if protect then protect(launcherGui) end
+    end)
+
+    local button = Instance.new("TextButton")
+    button.Name = "LogoButton"
+    button.Size = UDim2.fromOffset(58, 58)
+    button.Position = UDim2.new(1, -78, 0.5, -29)
+    button.BackgroundColor3 = Color3.fromRGB(112, 72, 232)
+    button.BorderSizePixel = 0
+    button.AutoButtonColor = false
+    button.Text = "H"
+    button.TextColor3 = Color3.fromRGB(255, 255, 255)
+    button.TextSize = 26
+    button.Font = Enum.Font.GothamBold
+    button.Active = true
+    button.Draggable = true
+    button.ZIndex = 10
+    button.Parent = launcherGui
+
+    local corner = Instance.new("UICorner")
+    corner.CornerRadius = UDim.new(1, 0)
+    corner.Parent = button
+
+    local stroke = Instance.new("UIStroke")
+    stroke.Color = Color3.fromRGB(205, 188, 255)
+    stroke.Thickness = 2
+    stroke.Transparency = 0.15
+    stroke.Parent = button
+
+    local gradient = Instance.new("UIGradient")
+    gradient.Color = ColorSequence.new({
+        ColorSequenceKeypoint.new(0, Color3.fromRGB(139, 92, 246)),
+        ColorSequenceKeypoint.new(1, Color3.fromRGB(66, 45, 140)),
+    })
+    gradient.Rotation = 45
+    gradient.Parent = button
+
+    button.Activated:Connect(toggleMainWindow)
+    return launcherGui
+end
+
+local LauncherGui = createLauncherButton()
+
+-- Nút X chỉ thu nhỏ; không hủy tool và các vòng farm đang chạy.
+pcall(function()
+    local oldClose = Window.TitleBar.CloseButton.Frame
+    local minimizeClose = oldClose:Clone()
+    minimizeClose.Name = "MinimizeCloseButton"
+    oldClose:Destroy()
+    minimizeClose.Parent = Window.TitleBar.Frame
+    Window.TitleBar.CloseButton.Frame = minimizeClose
+    minimizeClose.Activated:Connect(function()
+        if not Window.Minimized then
+            Window:Minimize()
+        end
+    end)
+end)
+
+
 -- ==================== TAB 1: MAIN ====================
 -- Tên tab ngắn, đồng nhất và ưu tiên tiếng Việt để dễ quét nhanh.
 local MainTab = Window:AddTab({Title = "Tổng quan", Icon = "layout-dashboard"})
@@ -1678,7 +1923,7 @@ MainTab:AddParagraph({
         .. "    •    LEVEL  " .. tostring(pcall(function() return Player.Data.Level.Value end) and Player.Data.Level.Value or "?")
         .. "    •    BELI  " .. tostring(pcall(function() return Player.Data.Beli.Value end) and Player.Data.Beli.Value or "?")
         .. "\nServer  " .. game.JobId:sub(1, 8) .. "..."
-        .. "\n\nRightControl  •  Ẩn / hiện bảng điều khiển"
+        .. "\n\nRightControl hoặc nút H  •  Ẩn / hiện bảng điều khiển"
 })
 
 local ServerSection = MainTab:AddSection("Kết nối máy chủ")
@@ -1800,12 +2045,27 @@ FarmPositionSection:AddToggle("FreezeTargetToggle", {
     end,
 })
 
+FarmPositionSection:AddToggle("SafetyModeToggle", {
+    Title = "Giới hạn an toàn",
+    Description = "Giới hạn tốc độ, hitbox và gom quái để giảm spam; không thể bảo đảm chống ban.",
+    Default = true,
+    Callback = function(v)
+        _G.SafetyMode = v
+        notify(
+            v and "Đã bật giới hạn an toàn" or "Đã tắt giới hạn an toàn",
+            v and "Tốc độ tối thiểu 0.05, hitbox tối đa 18, gom quái tối đa 350."
+                or "Tốc độ và phạm vi cao hơn có thể làm tăng rủi ro.",
+            5
+        )
+    end,
+})
+
 FarmPositionSection:AddSlider("AttackDelaySlider", {
     Title = "Độ trễ đánh thường",
-    Description = "Thấp hơn sẽ đánh nhanh hơn; 0.08 là mức ổn định.",
-    Min = 0.03,
+    Description = "Thấp hơn sẽ nhanh hơn; khi giới hạn an toàn bật, mức thực tế không thấp hơn 0.05.",
+    Min = 0.01,
     Max = 0.50,
-    Default = 0.08,
+    Default = 0.05,
     Rounding = 2,
     Callback = function(v) _G.AttackDelay = v end,
 })
@@ -2651,13 +2911,56 @@ pcall(function()
     end
 end)
 
+-- Đồng bộ lại giao diện theo đúng trạng thái trước khi chuyển server.
+if type(teleportState) == "table" and Fluent and Fluent.Options then
+    local teleportOptionMap = {
+        AutoFarmLevel = "AutoFarmLevel",
+        AutoFarmMastery = "AutoFarmMastery",
+        MasteryWeaponDrop = "MasteryWeapon",
+        SelectWeaponDrop = "SelectWeapon",
+        FarmMethodDrop = "FarmMethod",
+        SelectedMobDrop = "SelectedMob",
+        FarmHeightSlider = "FarmHeight",
+        FarmDistanceSlider = "FarmDistance",
+        HoldFarmPositionToggle = "HoldFarmPosition",
+        FreezeTargetToggle = "FreezeTarget",
+        SafetyModeToggle = "SafetyMode",
+        AttackDelaySlider = "AttackDelay",
+        HitboxSizeSlider = "HitboxSize",
+        BringMobToggle = "BringMob",
+        BringRadiusSlider = "BringRadius",
+        AutoSkillToggle = "AutoSkill",
+        SkillCDSlider = "SkillCooldown",
+        AutoFarmBoss = "AutoFarmBoss",
+        SelectedBossDrop = "SelectedBoss",
+        AutoFarmSeaBeast = "AutoFarmSeaBeast",
+        AutoFarmObs = "AutoFarmObs",
+        AutoFarmBone = "AutoFarmBone",
+        AutoFarmFragment = "AutoFarmFragment",
+        AutoRaidToggle = "AutoRaid",
+        AutoRaidFarmToggle = "AutoRaidFarm",
+        RaidChipDrop = "RaidChip",
+        AutoAwakeningToggle = "AutoAwakening",
+    }
+
+    for optionId, stateKey in pairs(teleportOptionMap) do
+        local option = Fluent.Options[optionId]
+        local value = teleportState[stateKey]
+        if option and value ~= nil and option.SetValue then
+            pcall(function() option:SetValue(value) end)
+        end
+    end
+end
+
+
 -- Thông báo load thành công
 notify(
     "HAOTOOL • Sẵn sàng",
     "Sea " .. WorldSea
         .. "  •  " .. #(WorldSea == 1 and QuestsSea1 or WorldSea == 2 and QuestsSea2 or QuestsSea3) .. " quest"
         .. "  •  " .. #islandNames .. " đảo"
-        .. "\nRightControl để ẩn / hiện giao diện",
+        .. "\nRightControl hoặc nút H để ẩn / hiện giao diện"
+        .. (teleportReloadReady and "  •  Tự nạp server: ON" or "  •  Executor không hỗ trợ tự nạp"),
     6
 )
 
@@ -2666,3 +2969,36 @@ print("⚡ HAOTOOL v2.0 — LOADED SUCCESSFULLY")
 print("🌊 Sea: " .. WorldSea)
 print("📌 RightControl to toggle GUI")
 print("=====================================")
+]========]
+
+local RuntimeEnv = getgenv and getgenv() or _G
+local storageFolder = "HaoToolHub"
+local storageFile = storageFolder .. "/autoload.lua"
+local sourceSaved = false
+
+if makefolder then
+    pcall(function()
+        if not isfolder or not isfolder(storageFolder) then
+            makefolder(storageFolder)
+        end
+    end)
+end
+
+if writefile then
+    sourceSaved = pcall(function()
+        writefile(storageFile, HAOTOOL_SOURCE)
+    end)
+end
+RuntimeEnv.HAOTOOL_SOURCE_SAVED = sourceSaved
+
+local runner, compileError = loadstring(HAOTOOL_SOURCE)
+if not runner then
+    RuntimeEnv.HAOTOOL_RUNNING = nil
+    warn("[HAOTOOL] Không biên dịch được tool: " .. tostring(compileError))
+else
+    local ok, runError = pcall(runner)
+    if not ok then
+        RuntimeEnv.HAOTOOL_RUNNING = nil
+        warn("[HAOTOOL] Tool gặp lỗi: " .. tostring(runError))
+    end
+end
