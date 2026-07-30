@@ -1074,11 +1074,11 @@ local function freezeMob(mob)
     rootPart.AssemblyLinearVelocity = Vector3.zero
     rootPart.AssemblyAngularVelocity = Vector3.zero
 
-    -- Mở rộng Hitbox theo chiều cao để ở độ cao 12+ vẫn đánh trúng 100%
+    -- Nối dài Hitbox chiều cao lên phía trên để nhân vật ở độ cao 12+ vẫn chạm Hitbox và đánh trúng 100%
     local farmHeight = math.abs(tonumber(_G.FarmHeight) or 12)
     local hitboxLimit = _G.SafetyMode and 30 or 60
     local hitboxSize = math.clamp(tonumber(_G.HitboxSize) or 14, 4, hitboxLimit)
-    local verticalSize = math.clamp(farmHeight * 3 + 25, hitboxSize, 85)
+    local verticalSize = math.clamp(farmHeight * 2.5 + 20, hitboxSize, 90)
 
     rootPart.Size = Vector3.new(hitboxSize, verticalSize, hitboxSize)
 
@@ -1115,26 +1115,24 @@ restoreFrozenMobs = function()
 end
 
 local function bringMobsNear(targetName, centerCFrame)
-    if not _G.BringMob then return end
-
     pcall(function()
-        if not workspace:FindFirstChild("Enemies") then return end
+        local enemies = workspace:FindFirstChild("Enemies")
+        if not enemies then return end
         grantSimulationRadius()
 
         local radiusLimit = _G.SafetyMode and 350 or 1000
         local radius = math.clamp(tonumber(_G.BringRadius) or 300, 50, radiusLimit)
-        for _, mob in pairs(workspace.Enemies:GetChildren()) do
+        for _, mob in pairs(enemies:GetChildren()) do
             local humanoid = mob:FindFirstChildOfClass("Humanoid")
             local rootPart = mob:FindFirstChild("HumanoidRootPart")
 
             if mobNameMatches(mob.Name, targetName)
                 and humanoid and humanoid.Health > 0 and rootPart then
                 local distance = (rootPart.Position - centerCFrame.Position).Magnitude
-                if distance <= radius then
+                if distance <= radius or mob == lastPreparedTarget then
                     freezeMob(mob)
-                    -- Đặt quái ngay sát dưới chân nhân vật (khoảng 3 studs) để server Blox Fruits xác nhận sát thương 100%
-                    local mobCFrame = centerCFrame * CFrame.new(0, -4, 0)
-                    rootPart.CFrame = mobCFrame
+                    -- Giữ quái đứng im 100% tại đúng 1 vị trí cố định trên mặt đất (không bị trôi hay di chuyển)
+                    rootPart.CFrame = centerCFrame
                     rootPart.AssemblyLinearVelocity = Vector3.zero
                     rootPart.AssemblyAngularVelocity = Vector3.zero
                 end
@@ -1162,7 +1160,9 @@ local function engageTarget(target, targetName, weaponType, forceSkills)
     if target ~= lastPreparedTarget or now - lastCombatMaintenance >= 0.15 then
         grantSimulationRadius()
         freezeMob(target)
-        bringMobsNear(targetName or target.Name, targetRoot.CFrame)
+        -- Sử dụng vị trí mặt đất cố định của quái chính làm tâm gom quái
+        local groundCFrame = CFrame.new(targetRoot.Position)
+        bringMobsNear(targetName or target.Name, groundCFrame)
         lastPreparedTarget = target
         lastCombatMaintenance = now
     end
