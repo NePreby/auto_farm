@@ -1121,10 +1121,17 @@ local function attack()
         return false
     end
 
-    -- 2. Kích hoạt đòn đánh qua Tool:Activate()
+    -- 2. Gửi sự kiện VirtualInputManager (Kích hoạt 100% đòn vung đánh Võ/Melee/Kiếm trong Blox Fruits)
+    pcall(function()
+        VirtualInputManager:SendMouseButtonEvent(0, 0, 0, true, game, 0)
+        task.wait(0.01)
+        VirtualInputManager:SendMouseButtonEvent(0, 0, 0, false, game, 0)
+    end)
+
+    -- 3. Kích hoạt đòn đánh ngầm qua Tool:Activate()
     pcall(function() tool:Activate() end)
 
-    -- 3. Kích hoạt CombatController nếu có
+    -- 4. Kích hoạt CombatController nếu có
     local controller = resolveCombatController(false)
     if controller then
         pcall(function()
@@ -1133,7 +1140,7 @@ local function attack()
         end)
     end
 
-    -- 4. Gửi Remote trực tiếp của Blox Fruits
+    -- 5. Gửi Remote trực tiếp của Blox Fruits
     pcall(function()
         local net = ReplicatedStorage:FindFirstChild("Modules") and ReplicatedStorage.Modules:FindFirstChild("Net")
         if net then
@@ -1147,7 +1154,7 @@ local function attack()
         if rigController and rigController:IsA("RemoteEvent") then rigController:FireServer("weaponAttack") end
     end)
 
-    -- 5. Click ảo VirtualUser làm dự phòng
+    -- 6. Click ảo VirtualUser làm dự phòng
     pcall(function()
         if VirtualUser then
             local cam = workspace.CurrentCamera
@@ -1156,7 +1163,7 @@ local function attack()
         end
     end)
 
-    lastAttackMethod = "Đang đánh (" .. tool.Name .. ")"
+    lastAttackMethod = "Đang vung đánh (" .. tool.Name .. ")"
     return true
 end-- ====== Auto Skill (dùng Z, X, C, V) ======
 local lastSkillTime = 0
