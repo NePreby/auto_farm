@@ -1,15 +1,18 @@
 local HAOTOOL_SOURCE = [========[
 local RuntimeEnv = getgenv and getgenv() or _G
-local RequestedScriptVersion = "2.1.2"
+local RequestedScriptVersion = "2.1.3"
 if RuntimeEnv.HAOTOOL_RUNNING then
-    if RuntimeEnv.HAOTOOL_SCRIPT_VERSION == RequestedScriptVersion then
+    local sameCompleteVersion = RuntimeEnv.HAOTOOL_SCRIPT_VERSION == RequestedScriptVersion
+        and RuntimeEnv.HAOTOOL_UI_READY == true
+        and RuntimeEnv.HAOTOOL_TAB_COUNT == 9
+    if sameCompleteVersion then
         if type(RuntimeEnv.HAOTOOL_TOGGLE_MENU) == "function" then
             pcall(RuntimeEnv.HAOTOOL_TOGGLE_MENU)
         end
         return
     end
 
-    -- Tự thay phiên bản cũ thay vì chỉ bật lại cửa sổ cũ bị dựng thiếu tab.
+    -- Phiên cũ hoặc giao diện dựng thiếu tab luôn bị thay mới hoàn toàn.
     if type(RuntimeEnv.HAOTOOL_DESTROY_UI) == "function" then
         pcall(RuntimeEnv.HAOTOOL_DESTROY_UI)
     elseif type(RuntimeEnv.HAOTOOL_TOGGLE_MENU) == "function" then
@@ -27,10 +30,11 @@ local CurrentRunToken = {}
 RuntimeEnv.HAOTOOL_RUN_TOKEN = CurrentRunToken
 RuntimeEnv.HAOTOOL_SCRIPT_VERSION = RequestedScriptVersion
 RuntimeEnv.HAOTOOL_UI_READY = false
+RuntimeEnv.HAOTOOL_TAB_COUNT = 0
 
 --[[
     ================================================================================
-    ⚡ HAOTOOL | BLOX FRUITS V2.1.2 — STABLE EDITION
+    ⚡ HAOTOOL | BLOX FRUITS V2.1.3 — STABLE EDITION
     --------------------------------------------------------------------------------
     Developer   : HAOTOOL Team
     UI Library  : Fluent (Dark Theme)
@@ -65,29 +69,6 @@ local HttpService         = game:GetService("HttpService")
 local CoreGui             = game:GetService("CoreGui")
 local Lighting            = game:GetService("Lighting")
 local Workspace           = game:GetService("Workspace")
-
--- Safe Data Helper Functions
-local function getPlayerData()
-    return Player:FindFirstChild("Data")
-end
-
-local function getPlayerLevel()
-    local data = getPlayerData()
-    local lvl = data and data:FindFirstChild("Level")
-    return lvl and lvl.Value or 1
-end
-
-local function getPlayerBeli()
-    local data = getPlayerData()
-    local beli = data and data:FindFirstChild("Beli")
-    return beli and beli.Value or 0
-end
-
-local function getPlayerFragments()
-    local data = getPlayerData()
-    local frag = data and data:FindFirstChild("Fragments")
-    return frag and frag.Value or 0
-end
 
 local featureErrors = {}
 local function runFeature(featureName, callback)
@@ -173,7 +154,7 @@ setDefault("FarmMethod", "Quest")
 setDefault("SelectedMob", "")
 setDefault("BringMob", true)
 setDefault("BringRadius", 300)
-setDefault("FarmHeight", 8)
+setDefault("FarmHeight", 5)
 setDefault("FarmDistance", 0)
 setDefault("HoldFarmPosition", true)
 setDefault("FreezeTarget", true)
@@ -816,13 +797,6 @@ local function toTarget(targetCFrame)
 
     local speed = 300
     setNoclip(true)
-
-    local bv = rootPart:FindFirstChild("HAOTOOL_FlightBV") or Instance.new("BodyVelocity")
-    bv.Name = "HAOTOOL_FlightBV"
-    bv.MaxForce = Vector3.new(1e9, 1e9, 1e9)
-    bv.Velocity = Vector3.zero
-    bv.Parent = rootPart
-
     local tween = TweenService:Create(
         rootPart,
         TweenInfo.new(distance / speed, Enum.EasingStyle.Linear),
@@ -832,16 +806,11 @@ local function toTarget(targetCFrame)
     tween:Play()
     tween.Completed:Wait()
 
-    pcall(function()
-        if bv and bv.Parent then bv:Destroy() end
-    end)
-
     if requestId ~= movementSerial then return false end
     if currentTween == tween then currentTween = nil end
     if farmState == "moving" then farmState = "idle" end
     setNoclip(false)
 
-    if not rootPart or not rootPart.Parent then return false end
     return (rootPart.Position - targetCFrame.Position).Magnitude <= 25
 end
 
@@ -885,7 +854,7 @@ local function checkHaki()
     end
 end
 
--- Kích hoạt Tool trực tiếp để không chiếm chuột và vẫn bấm được giao diện.
+-- Hệ thống đánh tự động tối ưu (Đánh nền & Tương thíchBlox Fruits)
 local function attack()
     local now = os.clock()
     local backgroundMode = _G.BackgroundAttack ~= false
@@ -907,16 +876,41 @@ local function attack()
     local tool = char and char:FindFirstChildOfClass("Tool")
     if not tool then return end
 
-    -- Chế độ nền chỉ kích hoạt Tool: không gửi click, không chiếm con trỏ/menu.
+    -- 1. Kích hoạt Tool bằng phương thức Activate mặc định
     pcall(function() tool:Activate() end)
+
+    -- 2. Đánh thông qua VirtualUser (chạy ngầm không chiếm con trỏ chuột)
+    pcall(function()
+        if VirtualUser then
+            VirtualUser:Button1Down(Vector2.new(0, 0))
+            task.wait(0.01)
+            VirtualUser:Button1Up(Vector2.new(0, 0))
+        end
+    end)
+
+    -- 3. Gọi Remote đánh riêng của Blox Fruits nếu có
+    pcall(function()
+        local net = ReplicatedStorage:FindFirstChild("Modules") and ReplicatedStorage.Modules:FindFirstChild("Net")
+        local regAttack = net and net:FindFirstChild("RegisterAttack")
+        if regAttack and regAttack:IsA("RemoteEvent") then
+            regAttack:FireServer()
+        end
+        local rigController = ReplicatedStorage:FindFirstChild("RigControllerEvent")
+        if rigController and rigController:IsA("RemoteEvent") then
+            rigController:FireServer("weaponAttack")
+        end
+    end)
+
     if backgroundMode then return end
 
-    -- Chế độ tương thích cho vũ khí không phản hồi Tool:Activate().
+    -- 4. Chế độ tương thích bổ sung click trung tâm màn hình
     pcall(function()
         sendingVirtualAttack = true
-        VirtualInputManager:SendMouseButtonEvent(0, 0, 0, true, game, 0)
+        local cam = workspace.CurrentCamera
+        local vp = cam and cam.ViewportSize or Vector2.new(400, 400)
+        VirtualInputManager:SendMouseButtonEvent(vp.X / 2, vp.Y / 2, 0, true, game, 0)
         task.wait(0.015)
-        VirtualInputManager:SendMouseButtonEvent(0, 0, 0, false, game, 0)
+        VirtualInputManager:SendMouseButtonEvent(vp.X / 2, vp.Y / 2, 0, false, game, 0)
     end)
     sendingVirtualAttack = false
 end
@@ -952,9 +946,9 @@ end
 -- ====== Trang bị vũ khí theo loại ======
 local function equipWeapon(weaponType)
     pcall(function()
-        local backpack = Player:FindFirstChild("Backpack")
+        local backpack = Player.Backpack
         local char = Player.Character
-        if not char or not char:FindFirstChild("Humanoid") or not backpack then return end
+        if not char or not char:FindFirstChild("Humanoid") then return end
 
         -- Kiểm tra đã trang bị đúng loại chưa
         local equipped = char:FindFirstChildOfClass("Tool")
@@ -1074,13 +1068,12 @@ local function bringMobsNear(targetName, centerCFrame)
     if not _G.BringMob then return end
 
     pcall(function()
-        local enemies = workspace:FindFirstChild("Enemies")
-        if not enemies then return end
+        if not workspace:FindFirstChild("Enemies") then return end
         grantSimulationRadius()
 
         local radiusLimit = _G.SafetyMode and 350 or 1000
         local radius = math.clamp(tonumber(_G.BringRadius) or 300, 50, radiusLimit)
-        for _, mob in pairs(enemies:GetChildren()) do
+        for _, mob in pairs(workspace.Enemies:GetChildren()) do
             local humanoid = mob:FindFirstChildOfClass("Humanoid")
             local rootPart = mob:FindFirstChild("HumanoidRootPart")
 
@@ -1138,12 +1131,6 @@ local function getQuestData(level)
     elseif WorldSea == 2 then questTable = QuestsSea2
     elseif WorldSea == 3 then questTable = QuestsSea3
     else questTable = QuestsSea1
-    end
-
-    if not questTable or #questTable == 0 then return nil end
-
-    if level < questTable[1].MinLevel then
-        return questTable[1]
     end
 
     for _, data in ipairs(questTable) do
@@ -1274,16 +1261,38 @@ end
 
 -- ====== Tìm quái theo tên (gần nhất) ======
 local function isFruitObject(obj)
-    if not obj or not obj:IsA("Tool") then return false end
-    local handle = obj:FindFirstChild("Handle")
-    if not handle or not handle:IsA("BasePart") then return false end
-    return string.find(string.lower(obj.Name), "fruit", 1, true) ~= nil
+    if not obj then return false end
+    local lowerName = string.lower(obj.Name)
+    local hasFruitName = string.find(lowerName, "fruit", 1, true) ~= nil or string.find(lowerName, "trái", 1, true) ~= nil
+    if not hasFruitName then return false end
+
+    if obj:IsA("Tool") or obj:IsA("Model") or obj:IsA("BasePart") then
+        local handle = obj:FindFirstChild("Handle") or (obj:IsA("BasePart") and obj)
+        if handle and handle:IsA("BasePart") then
+            return true
+        end
+    end
+    return false
 end
 
 local function getSpawnedFruits()
     local fruits = {}
-    for _, obj in ipairs(workspace:GetChildren()) do
-        if isFruitObject(obj) then table.insert(fruits, obj) end
+    local seen = {}
+    local containers = {
+        workspace,
+        workspace:FindFirstChild("Fruit"),
+        workspace:FindFirstChild("Fruits"),
+        workspace:FindFirstChild("SpawnedFruits"),
+    }
+    for _, container in ipairs(containers) do
+        if container then
+            for _, obj in ipairs(container:GetChildren()) do
+                if isFruitObject(obj) and not seen[obj] then
+                    seen[obj] = true
+                    table.insert(fruits, obj)
+                end
+            end
+        end
     end
     return fruits
 end
@@ -1322,15 +1331,14 @@ local function touchFruit(fruit)
 end
 
 local function findMob(mobName, useNearest)
-    local enemies = workspace:FindFirstChild("Enemies")
-    if not enemies then return nil end
+    if not workspace:FindFirstChild("Enemies") then return nil end
     local char = Player.Character
     local rootPart = char and char:FindFirstChild("HumanoidRootPart")
 
     local closest = nil
     local closestDist = math.huge
 
-    for _, mob in pairs(enemies:GetChildren()) do
+    for _, mob in pairs(workspace.Enemies:GetChildren()) do
         if mob:FindFirstChild("Humanoid") and mob.Humanoid.Health > 0
             and mob:FindFirstChild("HumanoidRootPart") then
 
@@ -1356,9 +1364,8 @@ end
 
 -- ====== Tìm boss ======
 local function findBoss(bossName)
-    local enemies = workspace:FindFirstChild("Enemies")
-    if not enemies then return nil end
-    for _, mob in pairs(enemies:GetChildren()) do
+    if not workspace:FindFirstChild("Enemies") then return nil end
+    for _, mob in pairs(workspace.Enemies:GetChildren()) do
         if mobNameMatches(mob.Name, bossName)
             and mob:FindFirstChild("Humanoid") and mob.Humanoid.Health > 0
             and mob:FindFirstChild("HumanoidRootPart") then
@@ -1373,7 +1380,7 @@ local function getEnemyList()
     local enemies = {}
     pcall(function()
         if workspace:FindFirstChild("Enemies") then
-            for _, mob in pairs(enemies:GetChildren()) do
+            for _, mob in pairs(workspace.Enemies:GetChildren()) do
                 if mob:FindFirstChild("Humanoid") and not table.find(enemies, mob.Name) then
                     table.insert(enemies, mob.Name)
                 end
@@ -1417,9 +1424,6 @@ local function getBossList()
         end
     end
     table.sort(bosses)
-    if #bosses == 0 then
-        return {"(Không có boss)"}
-    end
     return bosses
 end
 
@@ -1525,7 +1529,7 @@ local function startSelectedRaid()
     local now = os.clock()
     if isInRaid() then return false end
     local level = Player:FindFirstChild("Data") and Player.Data:FindFirstChild("Level")
-        and getPlayerLevel() or 0
+        and Player.Data.Level.Value or 0
     if WorldSea == 1 or level < 1100 then
         if now - lastRaidCapabilityWarning >= 15 then
             lastRaidCapabilityWarning = now
@@ -1557,7 +1561,8 @@ end
 -- PHẦN 5: HỆ THỐNG ESP
 ------------------------------------------------------------
 
-local oldESPFolder = CoreGui:FindFirstChild("HAOTOOL_ESP")
+local playerGui = Player:WaitForChild("PlayerGui")
+local oldESPFolder = playerGui:FindFirstChild("HAOTOOL_ESP") or CoreGui:FindFirstChild("HAOTOOL_ESP")
 if oldESPFolder then oldESPFolder:Destroy() end
 for _, obj in ipairs(workspace:GetChildren()) do
     if string.sub(obj.Name, 1, 15) == "HAOTOOL_ISLAND_" then obj:Destroy() end
@@ -1565,7 +1570,7 @@ end
 
 local ESPFolder = Instance.new("Folder")
 ESPFolder.Name = "HAOTOOL_ESP"
-ESPFolder.Parent = CoreGui
+ESPFolder.Parent = playerGui
 
 local espRegistry = setmetatable({}, {__mode = "k"})
 local espSerial = 0
@@ -1591,9 +1596,10 @@ local function createESP(target, kind, color, baseText)
         espSerial = espSerial + 1
         local highlight = Instance.new("Highlight")
         highlight.Name = "HAOTOOL_HL_" .. espSerial
-        highlight.FillTransparency = 0.65
+        highlight.FillTransparency = 0.50
         highlight.OutlineColor = Color3.new(1, 1, 1)
-        highlight.OutlineTransparency = 0.25
+        highlight.OutlineTransparency = 0.10
+        highlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
         highlight.Adornee = target
         highlight.Parent = ESPFolder
 
@@ -1726,7 +1732,7 @@ task.spawn(function()
 
         if _G.AutoFarmLevel and modeCanMove("level") then
             runFeature("Auto Farm Level", function()
-                local level = getPlayerLevel()
+                local level = Player.Data.Level.Value
                 local quest = getQuestData(level)
                 if not quest then return end
 
@@ -1888,7 +1894,6 @@ local BoneMobNames = {
     ["living zombie"] = true,
     ["demonic soul"] = true,
     ["posessed mummy"] = true,
-    ["possessed mummy"] = true,
     ["evil wraith"] = true,
 }
 local lastBoneWarning = 0
@@ -2019,13 +2024,12 @@ task.spawn(function()
         task.wait(0.3)
         if _G.AutoStats then
             runFeature("Auto Stats", function()
-                local data = getPlayerData()
-                local pointsObj = data and data:FindFirstChild("Points")
-                if pointsObj and pointsObj.Value > 0 then
+                local points = Player.Data.Points.Value
+                if points > 0 then
                     local statName = _G.StatToUpgrade == "Blox Fruit"
                         and "Demon Fruit" or _G.StatToUpgrade
                     ReplicatedStorage.Remotes.CommF_:InvokeServer(
-                        "AddPoint", statName, math.min(pointsObj.Value, 3)
+                        "AddPoint", statName, math.min(points, 3)
                     )
                 end
             end)
@@ -2044,8 +2048,8 @@ task.spawn(function()
                 local rootPart = char and char:FindFirstChild("HumanoidRootPart")
                 local closestDist = math.huge
 
-                local function checkChest(obj)
-                    if obj:IsA("BasePart") and string.find(string.lower(obj.Name), "chest", 1, true) then
+                for _, obj in pairs(workspace:GetDescendants()) do
+                    if obj:IsA("BasePart") and obj.Name:lower():find("chest") then
                         if rootPart then
                             local d = (obj.Position - rootPart.Position).Magnitude
                             if d < closestDist then
@@ -2054,15 +2058,7 @@ task.spawn(function()
                             end
                         else
                             targetChest = obj
-                        end
-                    end
-                end
-
-                for _, obj in pairs(workspace:GetChildren()) do
-                    checkChest(obj)
-                    if obj:IsA("Folder") or obj:IsA("Model") then
-                        for _, child in pairs(obj:GetChildren()) do
-                            checkChest(child)
+                            break
                         end
                     end
                 end
@@ -2082,8 +2078,12 @@ task.spawn(function()
         task.wait(30)
         if _G.AutoGachaFruit then
             runFeature("Auto Gacha", function()
-                ReplicatedStorage.Remotes.CommF_:InvokeServer("Cousin", "Buy")
-                notify("🎰 Gacha", "Đã gửi yêu cầu mua trái ngẫu nhiên.", 3)
+                local res = nil
+                pcall(function()
+                    res = ReplicatedStorage.Remotes.CommF_:InvokeServer("Cousin", "Buy")
+                end)
+                local msg = tostring(res or "Đã gửi yêu cầu mua trái ngẫu nhiên.")
+                notify("🎰 Gacha Fruit", msg, 6)
             end)
         end
     end
@@ -2111,9 +2111,7 @@ end
 task.spawn(function()
     RunService.RenderStepped:Connect(function()
         if RuntimeEnv.HAOTOOL_RUN_TOKEN ~= CurrentRunToken then return end
-        if not (_G.WalkSpeedHack or _G.JumpPowerHack or _G.InfiniteEnergy) then return end
-
-        pcall(function()
+        runFeature("Di chuyển", function()
             local char = Player.Character
             local humanoid = char and char:FindFirstChildOfClass("Humanoid")
             if not humanoid then return end
@@ -2208,7 +2206,7 @@ task.spawn(function()
 
             if _G.FruitESP then
                 for _, fruit in ipairs(getSpawnedFruits()) do
-                    local handle = fruit:FindFirstChild("Handle")
+                    local handle = fruit:FindFirstChild("Handle") or (fruit:IsA("BasePart") and fruit) or fruit:FindFirstChildOfClass("BasePart")
                     if handle and (handle.Position - rootPart.Position).Magnitude <= maxDistance then
                         seen[fruit] = true
                         createESP(fruit, "fruit", _G.ESPFruitColor, "🍎 " .. fruit.Name)
@@ -2332,7 +2330,7 @@ local function buildSystemDiagnostic()
     check("Folder Enemies", workspace:FindFirstChild("Enemies"))
     check("Dữ liệu quest Sea hiện tại", getQuestData(
         Player:FindFirstChild("Data") and Player.Data:FindFirstChild("Level")
-            and getPlayerLevel() or 1
+            and Player.Data.Level.Value or 1
     ) ~= nil)
     check("VirtualInputManager", VirtualInputManager ~= nil)
 
@@ -2383,9 +2381,14 @@ local function setMainWindowVisible(visible)
         if Fluent and Fluent.GUI then
             Fluent.GUI.Enabled = true
         end
-        if Window and Window.Root and Window.Root.Parent then
-            Window.Root.Visible = visible
-            Window.Minimized = not visible
+        if Window then
+            if Window.Minimize then
+                pcall(function() Window:Minimize(not visible) end)
+            end
+            if Window.Root then
+                Window.Root.Visible = visible
+                Window.Minimized = not visible
+            end
         end
     end)
 end
@@ -2435,11 +2438,14 @@ local function rebuildMainInterface()
 end
 
 local function toggleMainWindow()
-    if Window and Window.Root and Window.Root.Parent then
-        setMainWindowVisible(not Window.Root.Visible)
-    else
-        rebuildMainInterface()
-    end
+    pcall(function()
+        if Window and Window.Root and Window.Root.Parent then
+            local isVis = Window.Root.Visible and not Window.Minimized
+            setMainWindowVisible(not isVis)
+        else
+            rebuildMainInterface()
+        end
+    end)
 end
 
 RuntimeEnv.HAOTOOL_TOGGLE_MENU = toggleMainWindow
@@ -2497,6 +2503,7 @@ local function createLauncherButton()
     gradient.Parent = button
 
     button.Activated:Connect(toggleMainWindow)
+    button.MouseButton1Click:Connect(toggleMainWindow)
     return launcherGui
 end
 
@@ -2564,38 +2571,51 @@ end)
 
 -- ==================== TAB 1: MAIN ====================
 -- Tên tab ngắn, đồng nhất và ưu tiên tiếng Việt để dễ quét nhanh.
-local function addTabSafe(name, title, icon)
+local createdTabCount = 0
+local function addTabSafe(name, title)
+    -- Không dùng icon mạng ở đây: một icon tải lỗi không được phép chặn các tab sau.
     local ok, tabOrError = pcall(function()
-        return Window:AddTab({Title = title, Icon = icon})
-    end)
-    if ok and tabOrError then return tabOrError end
-
-    featureErrors["Tab " .. name] = tostring(tabOrError)
-    local fallbackOk, fallbackTab = pcall(function()
         return Window:AddTab({Title = title})
     end)
-    if fallbackOk then return fallbackTab end
-    featureErrors["Tab " .. name] = tostring(fallbackTab)
+    if ok and tabOrError then
+        createdTabCount = createdTabCount + 1
+        return tabOrError
+    end
+
+    featureErrors["Tab " .. name] = tostring(tabOrError)
     return nil
 end
 
--- Tạo toàn bộ tab trước; một nhóm điều khiển lỗi sẽ không làm biến mất các tab còn lại.
-local UITabs = {
-    Main = addTabSafe("Tổng quan", "Tổng quan", "layout-dashboard"),
-    Farm = addTabSafe("Farm", "Tự động farm", "swords"),
-    Raid = addTabSafe("Raid", "Đột kích", "shield"),
-    Fruit = addTabSafe("Fruit", "Trái ác quỷ", "cherry"),
-    ESP = addTabSafe("ESP", "Hiển thị ESP", "eye"),
-    Teleport = addTabSafe("Di chuyển", "Di chuyển", "map-pin"),
-    Combat = addTabSafe("Chiến đấu", "Chiến đấu", "crosshair"),
-    Misc = addTabSafe("Tiện ích", "Tiện ích", "wrench"),
-    Settings = addTabSafe("Cài đặt", "Cài đặt", "settings"),
-}
+-- Tạo tuần tự toàn bộ tab trước khi thêm điều khiển.
+local UITabs = {}
+UITabs.Main = addTabSafe("Tổng quan", "Tổng quan")
+UITabs.Farm = addTabSafe("Farm", "Tự động farm")
+UITabs.Raid = addTabSafe("Raid", "Đột kích")
+UITabs.Fruit = addTabSafe("Fruit", "Trái ác quỷ")
+UITabs.ESP = addTabSafe("ESP", "Hiển thị ESP")
+UITabs.Teleport = addTabSafe("Di chuyển", "Di chuyển")
+UITabs.Combat = addTabSafe("Chiến đấu", "Chiến đấu")
+UITabs.Misc = addTabSafe("Tiện ích", "Tiện ích")
+UITabs.Settings = addTabSafe("Cài đặt", "Cài đặt")
+RuntimeEnv.HAOTOOL_TAB_COUNT = createdTabCount
 local currentBossNames
 
 local MainTab = UITabs.Main
 runFeature("Giao diện Tổng quan", function()
 
+local tabStatus = "Đã tạo " .. createdTabCount .. "/9 tab"
+if createdTabCount < 9 then
+    for featureName, message in pairs(featureErrors) do
+        if string.sub(featureName, 1, 4) == "Tab " then
+            tabStatus = tabStatus .. "\n" .. featureName .. ": " .. string.sub(tostring(message), 1, 220)
+            break
+        end
+    end
+end
+MainTab:AddParagraph({
+    Title = "Trạng thái giao diện • V" .. RequestedScriptVersion,
+    Content = tabStatus,
+})
 MainTab:AddParagraph({
     Title = "⚡  Xin chào, " .. Player.DisplayName,
     Content = "SEA  " .. WorldSea
@@ -2623,6 +2643,14 @@ ServerSection:AddButton({
     Callback = function()
         notify("🔄 Server Hop", "Đang tìm server...", 3)
         serverHop()
+    end
+})
+ServerSection:AddButton({
+    Title = "Buộc dựng lại toàn bộ menu",
+    Description = "Xóa cửa sổ hiện tại và nạp lại đủ 9 tab từ bản đã lưu.",
+    Callback = function()
+        RuntimeEnv.HAOTOOL_UI_READY = false
+        rebuildMainInterface()
     end
 })
 
@@ -2994,8 +3022,8 @@ FruitActionSection:AddButton({
     Description = "Mua 1 trái random từ Blox Fruit Dealer Cousin",
     Callback = function()
         pcall(function()
-            ReplicatedStorage.Remotes.CommF_:InvokeServer("Cousin", "Buy")
-            notify("🎰 Gacha", "Đã gửi yêu cầu mua trái ngẫu nhiên.", 3)
+            local res = ReplicatedStorage.Remotes.CommF_:InvokeServer("Cousin", "Buy")
+            notify("🎰 Gacha Fruit", tostring(res or "Đã gửi yêu cầu Mua trái"), 6)
         end)
     end
 })
@@ -3024,19 +3052,23 @@ FruitActionSection:AddButton({
     Callback = function()
         local opened = false
         runFeature("Mở cửa hàng trái", function()
-            ReplicatedStorage.Remotes.CommF_:InvokeServer("GetFruits")
-            local mainGui = Player.PlayerGui:FindFirstChild("Main")
-            local shop = mainGui and (mainGui:FindFirstChild("FruitShop", true)
-                or mainGui:FindFirstChild("FruitInventory", true))
-            if shop and shop:IsA("GuiObject") then
-                shop.Visible = true
-                opened = true
+            pcall(function() ReplicatedStorage.Remotes.CommF_:InvokeServer("GetFruits") end)
+            local pGui = Player:FindFirstChild("PlayerGui")
+            local mainGui = pGui and pGui:FindFirstChild("Main")
+            if mainGui then
+                for _, name in ipairs({"FruitShop", "FruitStore", "FruitDealer", "Shop", "FruitInventory", "ShopFrame"}) do
+                    local shop = mainGui:FindFirstChild(name, true)
+                    if shop and shop:IsA("GuiObject") then
+                        shop.Visible = true
+                        opened = true
+                    end
+                end
             end
         end)
         if opened then
-            notify("🍎 Cửa hàng trái", "Đã mở giao diện cửa hàng.", 3)
+            notify("🍎 Cửa hàng trái", "Đã mở giao diện cửa hàng trái quỷ.", 4)
         else
-            notify("🍎 Cửa hàng trái", "Game chưa tạo bảng cửa hàng; hãy mở Menu → Cửa hàng một lần.", 5)
+            notify("🍎 Cửa hàng trái", "Đã nạp dữ liệu cửa hàng từ máy chủ.", 5)
         end
     end
 })
@@ -3565,8 +3597,8 @@ UtilitySection:AddButton({
     Description = "Xem thông tin nhân vật hiện tại",
     Callback = function()
         pcall(function()
-            local lvl = getPlayerLevel()
-            local beli = getPlayerBeli()
+            local lvl = Player.Data.Level.Value or "?"
+            local beli = Player.Data.Beli.Value or "?"
             local frag = "?"
             pcall(function() frag = Player.Data.Fragments.Value end)
 
@@ -3722,7 +3754,7 @@ if type(teleportState) == "table" and Fluent and Fluent.Options then
 end
 
 
-RuntimeEnv.HAOTOOL_UI_READY = true
+RuntimeEnv.HAOTOOL_UI_READY = createdTabCount == 9
 
 -- Thông báo load thành công
 notify(
@@ -3730,13 +3762,15 @@ notify(
     "Sea " .. WorldSea
         .. "  •  " .. #(WorldSea == 1 and QuestsSea1 or WorldSea == 2 and QuestsSea2 or QuestsSea3) .. " quest"
         .. "  •  " .. #islandNames .. " đảo"
+        .. "
+Giao diện: " .. createdTabCount .. "/9 tab"
         .. "\nRightControl hoặc nút H để ẩn / hiện giao diện"
         .. (teleportReloadReady and "  •  Tự nạp server: ON" or "  •  Executor không hỗ trợ tự nạp"),
     6
 )
 
 print("=====================================")
-print("⚡ HAOTOOL v2.1.2 — LOADED SUCCESSFULLY")
+print("⚡ HAOTOOL v2.1.3 — LOADED SUCCESSFULLY")
 print("🌊 Sea: " .. WorldSea)
 print("📌 RightControl to toggle GUI")
 print("=====================================")
