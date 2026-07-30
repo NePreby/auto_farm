@@ -1,6 +1,6 @@
 local HAOTOOL_SOURCE = [========[
 local RuntimeEnv = getgenv and getgenv() or _G
-local RequestedScriptVersion = "2.2.2"
+local RequestedScriptVersion = "2.2.3"
 if RuntimeEnv.HAOTOOL_RUNNING then
     -- Khi người dùng bấm EXECUTE lại trong Delta X: Xóa giao diện cũ và dựng lại giao diện mới 100%
     if type(RuntimeEnv.HAOTOOL_DESTROY_UI) == "function" then
@@ -22,7 +22,7 @@ RuntimeEnv.HAOTOOL_TAB_COUNT = 0
 
 --[[
     ================================================================================
-    ⚡ HAOTOOL | BLOX FRUITS V2.2.2 — STABLE EDITION
+    ⚡ HAOTOOL | BLOX FRUITS V2.2.3 — STABLE EDITION
     --------------------------------------------------------------------------------
     Developer   : HAOTOOL Team
     UI Library  : Fluent (Dark Theme)
@@ -806,6 +806,11 @@ local restoreFrozenMobs = function() end
 local userPointerActive = false
 local sendingVirtualAttack = false
 local manualPointerPauseUntil = 0
+local equipWeapon
+local damageWatchTarget = nil
+local damageWatchHealth = nil
+local damageWatchStartedAt = 0
+local lastConfirmedDamageAt = 0
 
 -- Chỉ một chế độ được quyền di chuyển nhân vật tại một thời điểm.
 local function getActiveMovementMode()
@@ -1103,68 +1108,120 @@ local function attack()
     if _G.SafetyMode then delay = math.max(delay, 0.05) end
     if now - lastAttackTime < delay then return false end
     lastAttackTime = now
-
     checkHaki()
+
+    local target = activeFarmTarget
+    local targetHumanoid = target and target:FindFirstChildOfClass("Humanoid")
+    local targetRoot = target and target:FindFirstChild("HumanoidRootPart")
+    if target ~= damageWatchTarget then
+        damageWatchTarget = target
+        damageWatchHealth = targetHumanoid and targetHumanoid.Health or nil
+        damageWatchStartedAt = now
+        lastConfirmedDamageAt = 0
+    elseif targetHumanoid and damageWatchHealth and targetHumanoid.Health < damageWatchHealth then
+        lastConfirmedDamageAt = now
+    end
+    if targetHumanoid then damageWatchHealth = targetHumanoid.Health end
+    local noDamageFor = lastConfirmedDamageAt > 0
+        and (now - lastConfirmedDamageAt) or (now - damageWatchStartedAt)
 
     local char = Player.Character
     if not char then return false end
-
-    -- 1. Đảm bảo nhân vật luôn có vũ khí trên tay (nếu chưa cầm, ép cầm từ Backpack)
     local tool = char:FindFirstChildOfClass("Tool")
-    if not tool then
+    if not tool and equipWeapon then
         equipWeapon(_G.SelectWeapon or "Melee")
         tool = char:FindFirstChildOfClass("Tool")
     end
-
     if not tool then
-        lastAttackMethod = "Chưa có vũ khí trong Balo"
+        lastAttackMethod = "Không tìm thấy vũ khí trong Balo"
         return false
     end
 
-    -- 2. Gửi sự kiện VirtualInputManager (Kích hoạt 100% đòn vung đánh Võ/Melee/Kiếm trong Blox Fruits)
-    pcall(function()
-        VirtualInputManager:SendMouseButtonEvent(0, 0, 0, true, game, 0)
-        task.wait(0.01)
-        VirtualInputManager:SendMouseButtonEvent(0, 0, 0, false, game, 0)
-    end)
+    local methods = {}
 
-    -- 3. Kích hoạt đòn đánh ngầm qua Tool:Activate()
-    pcall(function() tool:Activate() end)
-
-    -- 4. Kích hoạt CombatController nếu có
+    -- Bộ điều khiển thật: không thoát sớm chỉ vì pcall thành công.
     local controller = resolveCombatController(false)
     if controller then
-        pcall(function()
-            if type(controller.attack) == "function" then controller:attack()
-            elseif type(controller.Attack) == "function" then controller:Attack() end
+        local controllerOk = pcall(function()
+            controller.attacking = false
+            controller.blocking = false
+            controller.timeToNextAttack = 0
+            controller.timeToNextBlock = 0
+            controller.hitboxMagnitude = math.max(tonumber(controller.hitboxMagnitude) or 0, 60)
+            local controllerAttack = controller.attack or controller.Attack
+            if type(controllerAttack) == "function" then controllerAttack(controller) end
         end)
+        if controllerOk then
+            table.insert(methods, "Controller")
+        else
+            combatControllerCache = nil
+        end
     end
 
-    -- 5. Gửi Remote trực tiếp của Blox Fruits
-    pcall(function()
-        local net = ReplicatedStorage:FindFirstChild("Modules") and ReplicatedStorage.Modules:FindFirstChild("Net")
-        if net then
-            local regAttack = net:FindFirstChild("RegisterAttack") or net:FindFirstChild("RE/RegisterAttack")
-            if regAttack and regAttack:IsA("RemoteEvent") then regAttack:FireServer() end
-        end
-        local remotes = ReplicatedStorage:FindFirstChild("Remotes")
-        local commE = remotes and remotes:FindFirstChild("CommE")
-        if commE and commE:IsA("RemoteEvent") then commE:FireServer("weaponAttack") end
-        local rigController = ReplicatedStorage:FindFirstChild("RigControllerEvent")
-        if rigController and rigController:IsA("RemoteEvent") then rigController:FireServer("weaponAttack") end
-    end)
+    local toolOk = pcall(function() tool:Activate() end)
+    if toolOk then table.insert(methods, "Tool") end
 
-    -- 6. Click ảo VirtualUser làm dự phòng
-    pcall(function()
-        if VirtualUser then
-            local cam = workspace.CurrentCamera
-            local cf = cam and cam.CFrame or CFrame.new()
-            VirtualUser:ClickButton1(Vector2.new(500, 500), cf)
-        end
-    end)
+    -- Một số Tool mới có remote click riêng.
+    local leftClickRemote = tool:FindFirstChild("LeftClickRemote")
+    if leftClickRemote and leftClickRemote:IsA("RemoteEvent") and targetRoot then
+        local leftClickOk = pcall(function()
+            local direction = targetRoot.Position - char:GetPivot().Position
+            if direction.Magnitude > 0 then direction = direction.Unit end
+            leftClickRemote:FireServer(direction, 1)
+        end)
+        if leftClickOk then table.insert(methods, "ToolRemote") end
+    end
 
-    lastAttackMethod = "Đang vung đánh (" .. tool.Name .. ")"
-    return true
+    -- VirtualUser gửi đòn đánh vào bộ điều khiển game, không click lên nút menu.
+    if not userPointerActive and now >= manualPointerPauseUntil
+        and not UserInputService:GetFocusedTextBox() then
+        sendingVirtualAttack = true
+        local virtualOk = pcall(function()
+            local camera = workspace.CurrentCamera
+            local cameraCFrame = camera and camera.CFrame or CFrame.new()
+            VirtualUser:Button1Down(Vector2.new(0, 0), cameraCFrame)
+            task.wait(0.01)
+            VirtualUser:Button1Up(Vector2.new(0, 0), cameraCFrame)
+        end)
+        sendingVirtualAttack = false
+        if virtualOk then table.insert(methods, "VirtualUser") end
+
+        -- Nếu chưa có damage, gửi click vào giữa màn hình nhưng chỉ khi menu đã đóng.
+        if noDamageFor >= 0.75 and RuntimeEnv.HAOTOOL_MENU_VISIBLE ~= true then
+            sendingVirtualAttack = true
+            local inputOk = pcall(function()
+                local camera = workspace.CurrentCamera
+                local size = camera and camera.ViewportSize or Vector2.new(800, 600)
+                local x, y = math.floor(size.X * 0.5), math.floor(size.Y * 0.5)
+                VirtualInputManager:SendMouseButtonEvent(x, y, 0, true, game, 0)
+                task.wait(0.012)
+                VirtualInputManager:SendMouseButtonEvent(x, y, 0, false, game, 0)
+            end)
+            sendingVirtualAttack = false
+            if inputOk then table.insert(methods, "VIM") end
+        end
+    end
+
+    -- Dự phòng cho hệ chiến đấu Net mới: phải gửi cả RegisterAttack lẫn RegisterHit.
+    if noDamageFor >= 1.25 and target and targetRoot then
+        local netOk = pcall(function()
+            local modules = ReplicatedStorage:FindFirstChild("Modules")
+            local net = modules and modules:FindFirstChild("Net")
+            local registerAttack = net and net:FindFirstChild("RE/RegisterAttack")
+            local registerHit = net and net:FindFirstChild("RE/RegisterHit")
+            if not registerAttack or not registerHit then return end
+            local hitPart = target:FindFirstChild("Head") or targetRoot
+            local hitList = {{target, hitPart}}
+            registerAttack:FireServer(delay)
+            registerHit:FireServer(hitPart, hitList)
+        end)
+        if netOk then table.insert(methods, "NetHit") end
+    end
+
+    local damageState = lastConfirmedDamageAt > 0 and now - lastConfirmedDamageAt < 1
+        and "Damage OK" or string.format("chờ damage %.1fs", noDamageFor)
+    lastAttackMethod = damageState .. " • " .. (#methods > 0 and table.concat(methods, "+") or "không có đường đánh")
+    return #methods > 0
 end-- ====== Auto Skill (dùng Z, X, C, V) ======
 local lastSkillTime = 0
 local skillSequenceBusy = false
@@ -1195,7 +1252,7 @@ local function useSkills(force)
 end
 
 -- ====== Trang bị vũ khí theo loại ======
-local function equipWeapon(weaponType)
+equipWeapon = function(weaponType)
     pcall(function()
         local char = Player.Character
         local humanoid = char and char:FindFirstChildOfClass("Humanoid")
@@ -2686,6 +2743,7 @@ end
 
 -- Tách toàn bộ UI khỏi chunk chính để tránh chạm giới hạn local/register của Luau.
 local function buildMainInterface()
+RuntimeEnv.HAOTOOL_MENU_VISIBLE = true
 local Window = Fluent:CreateWindow({
     Title    = "HAOTOOL  •  BLOX FRUITS",
     SubTitle = "V" .. RequestedScriptVersion .. "  •  Sea " .. WorldSea .. "  |  Control Center",
@@ -2698,6 +2756,7 @@ local Window = Fluent:CreateWindow({
 
 -- ====== LOGO NỔI: LUÔN CÓ THỂ MỞ LẠI MENU ======
 local function setMainWindowVisible(visible)
+    RuntimeEnv.HAOTOOL_MENU_VISIBLE = visible == true
     if Fluent and Fluent.GUI then
         pcall(function() Fluent.GUI.Enabled = true end)
     end
@@ -2909,6 +2968,7 @@ pcall(function()
 end)
 
 RuntimeEnv.HAOTOOL_DESTROY_UI = function()
+    RuntimeEnv.HAOTOOL_MENU_VISIBLE = nil
     pcall(function()
         if LauncherGui and LauncherGui.Parent then LauncherGui:Destroy() end
     end)
@@ -4176,7 +4236,7 @@ notify(
 )
 
 print("=====================================")
-print("⚡ HAOTOOL v2.2.2 — LOADED SUCCESSFULLY")
+print("⚡ HAOTOOL v2.2.3 — LOADED SUCCESSFULLY")
 print("🌊 Sea: " .. WorldSea)
 print("📌 RightControl to toggle GUI")
 print("=====================================")
