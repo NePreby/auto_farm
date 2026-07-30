@@ -909,7 +909,7 @@ local function checkHaki()
     end
 end
 
--- Hệ thống đánh tự động ngầm 100% (Không click màn hình, không chiếm chuột)
+-- Hệ thống đánh tự động ngầm 100% (Không click màn hình, trúng 100% sát thương)
 local function attack()
     local now = os.clock()
     local delay = math.clamp(tonumber(_G.AttackDelay) or 0.05, 0.01, 0.50)
@@ -928,30 +928,30 @@ local function attack()
     -- 1. Kích hoạt Tool ngầm
     pcall(function() tool:Activate() end)
 
-    -- 2. Gửi sự kiện VirtualUser Button1 ngầm tại gốc Vector2.zero (không click màn hình)
+    -- 2. Gửi click ảo VirtualUser kết hợp Camera CFrame (không di chuyển chuột)
     pcall(function()
         if VirtualUser then
-            VirtualUser:Button1Down(Vector2.zero)
+            local cam = workspace.CurrentCamera
+            local cf = cam and cam.CFrame or CFrame.new()
+            VirtualUser:ClickButton1(Vector2.new(500, 500), cf)
+            VirtualUser:Button1Down(Vector2.zero, cf)
             task.wait(0.01)
-            VirtualUser:Button1Up(Vector2.zero)
+            VirtualUser:Button1Up(Vector2.zero, cf)
         end
     end)
 
-    -- 3. Gửi Remote đánh trực tiếp của Blox Fruits (Đánh trúng 100% ngầm)
+    -- 3. Gửi Remote đánh ngầm Blox Fruits
     pcall(function()
         local net = ReplicatedStorage:FindFirstChild("Modules") and ReplicatedStorage.Modules:FindFirstChild("Net")
-        local regAttack = net and net:FindFirstChild("RegisterAttack")
-        if regAttack and regAttack:IsA("RemoteEvent") then
-            regAttack:FireServer()
+        if net then
+            local regAttack = net:FindFirstChild("RegisterAttack") or net:FindFirstChild("RE/RegisterAttack")
+            if regAttack and regAttack:IsA("RemoteEvent") then regAttack:FireServer() end
         end
+        local remotes = ReplicatedStorage:FindFirstChild("Remotes")
+        local commE = remotes and remotes:FindFirstChild("CommE")
+        if commE and commE:IsA("RemoteEvent") then commE:FireServer("weaponAttack") end
         local rigController = ReplicatedStorage:FindFirstChild("RigControllerEvent")
-        if rigController and rigController:IsA("RemoteEvent") then
-            rigController:FireServer("weaponAttack")
-        end
-        local commE = ReplicatedStorage:FindFirstChild("Remotes") and ReplicatedStorage.Remotes:FindFirstChild("CommE")
-        if commE and commE:IsA("RemoteEvent") then
-            commE:FireServer("weaponAttack")
-        end
+        if rigController and rigController:IsA("RemoteEvent") then rigController:FireServer("weaponAttack") end
     end)
 end
 -- ====== Auto Skill (dùng Z, X, C, V) ======
@@ -1132,7 +1132,9 @@ local function bringMobsNear(targetName, centerCFrame)
                 local distance = (rootPart.Position - centerCFrame.Position).Magnitude
                 if distance <= radius then
                     freezeMob(mob)
-                    rootPart.CFrame = centerCFrame
+                    -- Đặt quái ngay sát dưới chân nhân vật (khoảng 3 studs) để server Blox Fruits xác nhận sát thương 100%
+                    local mobCFrame = centerCFrame * CFrame.new(0, -4, 0)
+                    rootPart.CFrame = mobCFrame
                     rootPart.AssemblyLinearVelocity = Vector3.zero
                     rootPart.AssemblyAngularVelocity = Vector3.zero
                 end
@@ -2443,13 +2445,15 @@ local Window = Fluent:CreateWindow({
 -- ====== LOGO NỔI: LUÔN CÓ THỂ MỞ LẠI MENU ======
 local function setMainWindowVisible(visible)
     pcall(function()
-        if Fluent and Fluent.GUI then
-            Fluent.GUI.Enabled = true
+        if Fluent and Fluent.GUI and typeof(Fluent.GUI) == "Instance" then
+            Fluent.GUI.Enabled = visible
         end
         if Window then
-            if Window.Minimize then
-                pcall(function() Window:Minimize(not visible) end)
-            end
+            pcall(function()
+                if Window.Minimize then
+                    Window:Minimize(not visible)
+                end
+            end)
             if Window.Root then
                 Window.Root.Visible = visible
                 Window.Minimized = not visible
@@ -2516,8 +2520,13 @@ end
 RuntimeEnv.HAOTOOL_TOGGLE_MENU = toggleMainWindow
 
 local function createLauncherButton()
-    local coreGui = game:GetService("CoreGui")
-    local oldLauncher = coreGui:FindFirstChild("HAOTOOL_Launcher")
+    local targetContainer = game:GetService("CoreGui")
+    pcall(function()
+        local pGui = Player:FindFirstChild("PlayerGui")
+        if pGui then targetContainer = pGui end
+    end)
+
+    local oldLauncher = targetContainer:FindFirstChild("HAOTOOL_Launcher") or game:GetService("CoreGui"):FindFirstChild("HAOTOOL_Launcher")
     if oldLauncher then oldLauncher:Destroy() end
 
     local launcherGui = Instance.new("ScreenGui")
@@ -2526,7 +2535,7 @@ local function createLauncherButton()
     launcherGui.IgnoreGuiInset = true
     launcherGui.DisplayOrder = 1000000
     launcherGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-    launcherGui.Parent = coreGui
+    launcherGui.Parent = targetContainer
 
     pcall(function()
         local protect = protectgui or (syn and syn.protect_gui)
@@ -2545,8 +2554,7 @@ local function createLauncherButton()
     button.TextSize = 26
     button.Font = Enum.Font.GothamBold
     button.Active = true
-    button.Draggable = true
-    button.ZIndex = 10
+    button.ZIndex = 100000
     button.Parent = launcherGui
 
     local corner = Instance.new("UICorner")
@@ -2567,8 +2575,38 @@ local function createLauncherButton()
     gradient.Rotation = 45
     gradient.Parent = button
 
-    button.Activated:Connect(toggleMainWindow)
-    button.MouseButton1Click:Connect(toggleMainWindow)
+    -- Kéo thả nút mượt mà không làm chặn sự kiện Click
+    local dragging = false
+    local dragStart, startPos = nil, nil
+
+    button.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+            dragging = true
+            dragStart = input.Position
+            startPos = button.Position
+            input.Changed:Connect(function()
+                if input.UserInputState == Enum.UserInputState.End then
+                    dragging = false
+                end
+            end)
+        end
+    end)
+
+    button.InputChanged:Connect(function(input)
+        if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+            local delta = input.Position - dragStart
+            button.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+        end
+    end)
+
+    local function handleToggle()
+        if not dragging or (dragStart and (button.Position.X.Offset - startPos.X.Offset)^2 + (button.Position.Y.Offset - startPos.Y.Offset)^2 < 25) then
+            toggleMainWindow()
+        end
+    end
+
+    button.Activated:Connect(handleToggle)
+    button.MouseButton1Click:Connect(handleToggle)
     return launcherGui
 end
 
