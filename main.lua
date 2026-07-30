@@ -154,7 +154,7 @@ setDefault("FarmMethod", "Quest")
 setDefault("SelectedMob", "")
 setDefault("BringMob", true)
 setDefault("BringRadius", 300)
-setDefault("FarmHeight", 8)
+setDefault("FarmHeight", 12)
 setDefault("FarmDistance", 0)
 setDefault("HoldFarmPosition", true)
 setDefault("FreezeTarget", true)
@@ -1008,6 +1008,8 @@ local function freezeMob(mob)
             WalkSpeed = humanoid.WalkSpeed,
             JumpPower = humanoid.JumpPower,
             AutoRotate = humanoid.AutoRotate,
+            PlatformStand = humanoid.PlatformStand,
+            Anchored = rootPart.Anchored,
             CanCollide = rootPart.CanCollide,
             Size = rootPart.Size,
         }
@@ -1017,11 +1019,11 @@ local function freezeMob(mob)
     rootPart.AssemblyLinearVelocity = Vector3.zero
     rootPart.AssemblyAngularVelocity = Vector3.zero
 
-    -- Mở rộng Hitbox theo chiều cao để khi nhân vật đứng trên cao vẫn đánh trúng 100%
-    local farmHeight = math.abs(tonumber(_G.FarmHeight) or 8)
-    local hitboxLimit = _G.SafetyMode and 25 or 50
+    -- Mở rộng Hitbox theo chiều cao để ở độ cao 12+ vẫn đánh trúng 100%
+    local farmHeight = math.abs(tonumber(_G.FarmHeight) or 12)
+    local hitboxLimit = _G.SafetyMode and 30 or 60
     local hitboxSize = math.clamp(tonumber(_G.HitboxSize) or 14, 4, hitboxLimit)
-    local verticalSize = math.clamp(farmHeight * 2.5 + hitboxSize, hitboxSize, 60)
+    local verticalSize = math.clamp(farmHeight * 3 + 25, hitboxSize, 85)
 
     rootPart.Size = Vector3.new(hitboxSize, verticalSize, hitboxSize)
 
@@ -1029,6 +1031,8 @@ local function freezeMob(mob)
         humanoid.WalkSpeed = 0
         humanoid.JumpPower = 0
         humanoid.AutoRotate = false
+        humanoid.PlatformStand = true
+        rootPart.Anchored = true
     end
 end
 
@@ -1042,9 +1046,11 @@ restoreFrozenMobs = function()
                     humanoid.WalkSpeed = state.WalkSpeed
                     humanoid.JumpPower = state.JumpPower
                     humanoid.AutoRotate = state.AutoRotate
+                    humanoid.PlatformStand = state.PlatformStand
                 end
                 if rootPart then
                     rootPart.CanCollide = state.CanCollide
+                    rootPart.Anchored = state.Anchored
                     rootPart.Size = state.Size
                 end
             end
