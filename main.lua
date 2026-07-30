@@ -419,23 +419,20 @@ Player.Idled:Connect(function()
     end)
 end)
 
--- ==================== TAB GIAO DIỆN RAYFIELD ====================
+-- ==================== GIAO DIỆN 3 TAB GỌN (VỪA MÀN HÌNH MOBILE) ====================
 
--- TAB 1: AUTO FARM
-local FarmTab = Window:CreateTab("Auto Farm", 4483363465)
-FarmTab:CreateSection("Farm Level Tự Động")
+-- TAB 1: FARM (Farm + Haki + Rương)
+local FarmTab = Window:CreateTab("Farm", 4483363465)
 
 FarmTab:CreateToggle({
-   Name = "Auto Farm Level (Làm Quest)",
+   Name = "Auto Farm Level",
    CurrentValue = false,
    Flag = "AutoFarmLevel",
-   Callback = function(Value)
-      _G.AutoFarmLevel = Value
-   end,
+   Callback = function(Value) _G.AutoFarmLevel = Value end,
 })
 
 FarmTab:CreateDropdown({
-   Name = "Chọn Vũ Khí",
+   Name = "Vũ Khí",
    Options = {"Melee", "Sword", "Blox Fruit"},
    CurrentOption = {"Melee"},
    MultipleOptions = false,
@@ -446,46 +443,37 @@ FarmTab:CreateDropdown({
 })
 
 FarmTab:CreateToggle({
-   Name = "Gom Quái Lại Gần (Bring Mob)",
+   Name = "Gom Quái (Bring Mob)",
    CurrentValue = false,
    Flag = "BringMob",
-   Callback = function(Value)
-      _G.BringMob = Value
-   end,
+   Callback = function(Value) _G.BringMob = Value end,
 })
 
 FarmTab:CreateToggle({
    Name = "Auto Buso Haki",
    CurrentValue = true,
    Flag = "AutoHaki",
-   Callback = function(Value)
-      _G.AutoHaki = Value
-   end,
+   Callback = function(Value) _G.AutoHaki = Value end,
 })
 
 FarmTab:CreateToggle({
    Name = "Auto Ken Haki",
    CurrentValue = false,
    Flag = "AutoKen",
-   Callback = function(Value)
-      _G.AutoKen = Value
-   end,
+   Callback = function(Value) _G.AutoKen = Value end,
 })
-
-FarmTab:CreateSection("Thu Thập Beli")
 
 FarmTab:CreateToggle({
-   Name = "Auto Farm Rương (Beli)",
+   Name = "Auto Farm Rương",
    CurrentValue = false,
    Flag = "AutoChest",
-   Callback = function(Value)
-      _G.AutoFarmChest = Value
-   end,
+   Callback = function(Value) _G.AutoFarmChest = Value end,
 })
 
--- TAB 2: DỊCH CHUYỂN
-local TeleportTab = Window:CreateTab("Dịch Chuyển", 4483363465)
-TeleportTab:CreateSection("Bay Tới Đảo (Sea " .. WorldSea .. ")")
+-- TAB 2: DI CHUYỂN (Teleport + Speed + Jump)
+local MoveTab = Window:CreateTab("Di Chuyển", 4483363465)
+
+MoveTab:CreateSection("Dịch Chuyển Đảo")
 
 local islandNames = {}
 for name, _ in pairs(IslandsSea1) do
@@ -493,7 +481,7 @@ for name, _ in pairs(IslandsSea1) do
 end
 table.sort(islandNames)
 
-TeleportTab:CreateDropdown({
+MoveTab:CreateDropdown({
    Name = "Chọn Đảo",
    Options = islandNames,
    CurrentOption = {"Starter Island"},
@@ -504,8 +492,8 @@ TeleportTab:CreateDropdown({
    end,
 })
 
-TeleportTab:CreateButton({
-   Name = "Bay Tới Đảo Đã Chọn",
+MoveTab:CreateButton({
+   Name = "Bay Tới Đảo",
    Callback = function()
       local targetPos = IslandsSea1[_G.SelectedIsland]
       if targetPos then
@@ -520,21 +508,63 @@ TeleportTab:CreateButton({
    end,
 })
 
--- TAB 3: CHỈ SỐ STATS
-local StatsTab = Window:CreateTab("Chỉ Số Stats", 4483363465)
-StatsTab:CreateSection("Tự Động Cộng Điểm")
+MoveTab:CreateSection("Tốc Độ")
 
-StatsTab:CreateToggle({
-   Name = "Auto Cộng Điểm Stats",
+MoveTab:CreateToggle({
+   Name = "WalkSpeed",
    CurrentValue = false,
-   Flag = "AutoStats",
-   Callback = function(Value)
-      _G.AutoStats = Value
-   end,
+   Flag = "WalkSpeedHack",
+   Callback = function(Value) _G.WalkSpeedHack = Value end,
 })
 
-StatsTab:CreateDropdown({
-   Name = "Chỉ Số Ưu Tiên",
+MoveTab:CreateSlider({
+   Name = "Tốc Độ Chạy",
+   Range = {16, 200},
+   Increment = 1,
+   Suffix = "",
+   CurrentValue = 50,
+   Flag = "WalkSpeedSlider",
+   Callback = function(Value) _G.WalkSpeedVal = Value end,
+})
+
+MoveTab:CreateToggle({
+   Name = "JumpPower",
+   CurrentValue = false,
+   Flag = "JumpPowerHack",
+   Callback = function(Value) _G.JumpPowerHack = Value end,
+})
+
+MoveTab:CreateSlider({
+   Name = "Sức Nhảy",
+   Range = {50, 300},
+   Increment = 1,
+   Suffix = "",
+   CurrentValue = 100,
+   Flag = "JumpPowerSlider",
+   Callback = function(Value) _G.JumpPowerVal = Value end,
+})
+
+MoveTab:CreateToggle({
+   Name = "Infinite Jump",
+   CurrentValue = false,
+   Flag = "InfiniteJump",
+   Callback = function(Value) _G.InfiniteJump = Value end,
+})
+
+-- TAB 3: KHÁC (Stats + Trái + FPS)
+local ExtraTab = Window:CreateTab("Khác", 4483363465)
+
+ExtraTab:CreateSection("Cộng Điểm Stats")
+
+ExtraTab:CreateToggle({
+   Name = "Auto Stats",
+   CurrentValue = false,
+   Flag = "AutoStats",
+   Callback = function(Value) _G.AutoStats = Value end,
+})
+
+ExtraTab:CreateDropdown({
+   Name = "Chỉ Số",
    Options = {"Melee", "Defense", "Sword", "Gun", "Blox Fruit"},
    CurrentOption = {"Melee"},
    MultipleOptions = false,
@@ -544,96 +574,33 @@ StatsTab:CreateDropdown({
    end,
 })
 
--- TAB 4: TRÁI ÁC QUỶ
-local FruitTab = Window:CreateTab("Trái Ác Quỷ", 4483363465)
-FruitTab:CreateSection("Săn Trái Ác Quỷ")
+ExtraTab:CreateSection("Trái Ác Quỷ")
 
-FruitTab:CreateToggle({
-   Name = "Thông Báo Khi Trái Spawn",
+ExtraTab:CreateToggle({
+   Name = "Báo Trái Spawn",
    CurrentValue = false,
    Flag = "AutoFruit",
-   Callback = function(Value)
-      _G.AutoFruitFinder = Value
-   end,
+   Callback = function(Value) _G.AutoFruitFinder = Value end,
 })
 
-FruitTab:CreateToggle({
-   Name = "Auto Bay Tới Nhặt Trái",
+ExtraTab:CreateToggle({
+   Name = "Auto Nhặt Trái",
    CurrentValue = false,
    Flag = "AutoPickFruit",
-   Callback = function(Value)
-      _G.AutoPickFruit = Value
-   end,
+   Callback = function(Value) _G.AutoPickFruit = Value end,
 })
 
-FruitTab:CreateToggle({
-   Name = "Auto Mua Trái Ngẫu Nhiên (Gacha)",
+ExtraTab:CreateToggle({
+   Name = "Auto Gacha Trái",
    CurrentValue = false,
    Flag = "AutoGacha",
-   Callback = function(Value)
-      _G.AutoGachaFruit = Value
-   end,
+   Callback = function(Value) _G.AutoGachaFruit = Value end,
 })
 
--- TAB 5: HỆ THỐNG
-local MiscTab = Window:CreateTab("Hệ Thống", 4483363465)
-MiscTab:CreateSection("Hack Di Chuyển")
+ExtraTab:CreateSection("Tối Ưu")
 
-MiscTab:CreateToggle({
-   Name = "Tăng Tốc Chạy (WalkSpeed)",
-   CurrentValue = false,
-   Flag = "WalkSpeedHack",
-   Callback = function(Value)
-      _G.WalkSpeedHack = Value
-   end,
-})
-
-MiscTab:CreateSlider({
-   Name = "Tốc Độ Chạy",
-   Range = {16, 200},
-   Increment = 1,
-   Suffix = " Speed",
-   CurrentValue = 50,
-   Flag = "WalkSpeedSlider",
-   Callback = function(Value)
-      _G.WalkSpeedVal = Value
-   end,
-})
-
-MiscTab:CreateToggle({
-   Name = "Tăng Sức Nhảy (JumpPower)",
-   CurrentValue = false,
-   Flag = "JumpPowerHack",
-   Callback = function(Value)
-      _G.JumpPowerHack = Value
-   end,
-})
-
-MiscTab:CreateSlider({
-   Name = "Sức Nhảy",
-   Range = {50, 300},
-   Increment = 1,
-   Suffix = " Power",
-   CurrentValue = 100,
-   Flag = "JumpPowerSlider",
-   Callback = function(Value)
-      _G.JumpPowerVal = Value
-   end,
-})
-
-MiscTab:CreateToggle({
-   Name = "Nhảy Vô Hạn (Infinite Jump)",
-   CurrentValue = false,
-   Flag = "InfiniteJump",
-   Callback = function(Value)
-      _G.InfiniteJump = Value
-   end,
-})
-
-MiscTab:CreateSection("Tối Ưu Game")
-
-MiscTab:CreateButton({
-   Name = "Tối Ưu FPS (Xóa Texture)",
+ExtraTab:CreateButton({
+   Name = "Tối Ưu FPS",
    Callback = function()
       pcall(function()
           for _, obj in pairs(game:GetDescendants()) do
@@ -655,3 +622,4 @@ MiscTab:CreateButton({
 
 -- Load cấu hình đã lưu
 Rayfield:LoadConfiguration()
+
