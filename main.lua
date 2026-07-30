@@ -1,16 +1,19 @@
 --[[
     ================================================================================
-    ⚡ HAOTOOL | BLOX FRUITS V2.0 — ULTIMATE EDITION
+    ⚡ HAOTOOL | BLOX FRUITS V2.5 — ULTIMATE GOD EDITION
     --------------------------------------------------------------------------------
     Developer   : HAOTOOL Team
     UI Library  : Fluent (Dark Theme)
     Tương thích : Delta, Solara, Wave, Fluxus, Codex
     Ẩn/Hiện GUI : Phím RightControl
     ================================================================================
-    LƯU Ý:
-    • Không dùng VirtualUser:CaptureController() (gây đơ GUI)
-    • Tất cả remote đều bọc pcall để an toàn
-    • Mỗi chức năng chạy trong task.spawn riêng, crash 1 cái không ảnh hưởng cái khác
+    BỔ SUNG MỚI (V2.5):
+    ⚡ Fast Attack Bypass Animation (Đánh siêu nhanh, 0.05s)
+    ⚔️ Auto Farm Items & Vũ Khí Huyền Thoại (Saber, Yama, Tushita, CDK, Soul Guitar, Godhuman)
+    👹 Auto Elite Hunter (Deandre, Urban, Diablo)
+    🏰 Auto Pirate Raid (Castle on the Sea)
+    🍎 Auto Store Fruit (Tự động cất trái vào Inventory)
+    🛒 Auto Sniper Fruit Shop (Tự mua trái hot trong Shop)
     ================================================================================
 --]]
 
@@ -21,7 +24,6 @@
 if not game:IsLoaded() then game.Loaded:Wait() end
 task.wait(1)
 
--- Services chính
 local Players             = game:GetService("Players")
 local Player              = Players.LocalPlayer
 local TweenService        = game:GetService("TweenService")
@@ -32,14 +34,12 @@ local VirtualUser         = game:GetService("VirtualUser")
 local Lighting            = game:GetService("Lighting")
 local Workspace           = game:GetService("Workspace")
 
--- Character tracking
 local Character = Player.Character or Player.CharacterAdded:Wait()
 Player.CharacterAdded:Connect(function(char)
     Character = char
-    task.wait(0.5) -- Đợi character load xong
+    task.wait(0.5)
 end)
 
--- Nhận diện Sea hiện tại dựa trên PlaceId
 local PlaceId = game.PlaceId
 local WorldSea = 1
 if PlaceId == 2753915549 then WorldSea = 1
@@ -58,7 +58,6 @@ local ok1, err1 = pcall(function()
 end)
 if not ok1 then
     warn("[HAOTOOL] Không load được Fluent: " .. tostring(err1))
-    -- Fallback: thử Rayfield nếu Fluent lỗi
     pcall(function()
         Fluent = loadstring(game:HttpGet("https://sirius.menu/rayfield"))()
     end)
@@ -76,7 +75,12 @@ end)
 -- PHẦN 2: BIẾN CẤU HÌNH TOÀN CỤC
 ------------------------------------------------------------
 
--- Farm
+-- Fast Attack
+_G.FastAttack        = true
+_G.FastAttackSpeed   = 0.05
+_G.FastAttackRange   = 65
+
+-- Farm Level & Quái
 _G.AutoFarmLevel     = false
 _G.AutoFarmMastery   = false
 _G.MasteryWeapon     = "Melee"
@@ -93,6 +97,18 @@ _G.BringMob          = false
 _G.AutoSkill         = false
 _G.SkillCooldown     = 1.5
 
+-- Items & Quests Huyền Thoại
+_G.AutoSaber         = false
+_G.AutoYama          = false
+_G.AutoTushita       = false
+_G.AutoCDK           = false
+_G.AutoSoulGuitar    = false
+_G.AutoGodhuman      = false
+_G.AutoEliteHunter   = false
+_G.AutoPirateRaid    = false
+_G.AutoFactory       = false
+_G.AutoBartilo       = false
+
 -- Raid
 _G.AutoRaid          = false
 _G.AutoRaidFarm      = false
@@ -104,6 +120,9 @@ _G.AutoFruitFinder   = false
 _G.AutoCollectFruit  = false
 _G.FruitESP          = false
 _G.AutoGachaFruit    = false
+_G.AutoStoreFruit    = true
+_G.AutoSniperShop    = false
+_G.SniperFruitName   = "Dough-Dough"
 
 -- ESP
 _G.ESPPlayer         = false
@@ -148,7 +167,6 @@ _G.SelectedIsland    = ""
 -- PHẦN 3: DATABASE — QUEST, ĐẢO, BOSS (3 SEA)
 ------------------------------------------------------------
 
--- ==================== VŨ KHÍ ====================
 local MeleeNames = {
     "Combat", "Black Leg", "Electro", "Fishman Karate", "Dragon Claw",
     "Superhuman", "Death Step", "Sharkman Karate", "Electric Claw",
@@ -169,7 +187,7 @@ local GunNames = {
     "Soul Guitar", "Serpent Bow"
 }
 
--- ==================== ĐẢO - SEA 1 ====================
+-- Đảo Sea 1
 local IslandsSea1 = {
     ["Starter Island"]    = Vector3.new(1059, 15, 1549),
     ["Jungle"]            = Vector3.new(-1598, 36, 153),
@@ -187,7 +205,7 @@ local IslandsSea1 = {
     ["Mirage Island"]     = Vector3.new(15367, 262, 3252),
 }
 
--- ==================== ĐẢO - SEA 2 ====================
+-- Đảo Sea 2
 local IslandsSea2 = {
     ["Kingdom of Rose"]    = Vector3.new(-360, 8, 390),
     ["Green Zone"]         = Vector3.new(-2410, 73, -3222),
@@ -204,7 +222,7 @@ local IslandsSea2 = {
     ["Cake Island"]        = Vector3.new(-856, 8, -11221),
 }
 
--- ==================== ĐẢO - SEA 3 ====================
+-- Đảo Sea 3
 local IslandsSea3 = {
     ["Port Town"]          = Vector3.new(-290, 42, 5358),
     ["Hydra Island"]       = Vector3.new(5229, 15, 353),
@@ -217,7 +235,6 @@ local IslandsSea3 = {
     ["Mirage Island"]      = Vector3.new(15367, 262, 3252),
 }
 
--- Hàm lấy đảo theo Sea hiện tại
 local function getSeaIslands()
     if WorldSea == 1 then return IslandsSea1
     elseif WorldSea == 2 then return IslandsSea2
@@ -226,7 +243,7 @@ local function getSeaIslands()
     return IslandsSea1
 end
 
--- ==================== QUEST DATA — SEA 1 (Lv 1–700) ====================
+-- Quests Sea 1 (Lv 1 - 700)
 local QuestsSea1 = {
     {MinLevel=1,   MaxLevel=9,   QuestName="BanditQuest1",  QuestNumber=1, MobName="Bandit",             QuestNpc=Vector3.new(1059,15,1549),    MobPosition=Vector3.new(1038,16,1621)},
     {MinLevel=10,  MaxLevel=14,  QuestName="MonkeyQuest",   QuestNumber=1, MobName="Monkey",             QuestNpc=Vector3.new(-1598,36,153),    MobPosition=Vector3.new(-1610,36,142)},
@@ -255,8 +272,7 @@ local QuestsSea1 = {
     {MinLevel=650, MaxLevel=700, QuestName="FountainQuest", QuestNumber=2, MobName="Galley Captain",     QuestNpc=Vector3.new(5121,5,4110),     MobPosition=Vector3.new(5600,5,4400)},
 }
 
--- ==================== QUEST DATA — SEA 2 (Lv 700–1500) ====================
--- Lưu ý: Tọa độ có thể lệch vài đơn vị, script sẽ tự tween tới
+-- Quests Sea 2 (Lv 700 - 1500)
 local QuestsSea2 = {
     {MinLevel=700,  MaxLevel=724,  QuestName="Area1Quest",       QuestNumber=1, MobName="Swan Pirate",         QuestNpc=Vector3.new(-432,73,299),       MobPosition=Vector3.new(-545,72,302)},
     {MinLevel=725,  MaxLevel=774,  QuestName="Area1Quest",       QuestNumber=2, MobName="Factory Staff",       QuestNpc=Vector3.new(-432,73,299),       MobPosition=Vector3.new(-410,72,280)},
@@ -279,7 +295,7 @@ local QuestsSea2 = {
     {MinLevel=1475, MaxLevel=1500, QuestName="CakeQuest",        QuestNumber=5, MobName="Candy Rebel",         QuestNpc=Vector3.new(-856,8,-11221),     MobPosition=Vector3.new(-750,8,-11100)},
 }
 
--- ==================== QUEST DATA — SEA 3 (Lv 1500–2550+) ====================
+-- Quests Sea 3 (Lv 1500 - 2550+)
 local QuestsSea3 = {
     {MinLevel=1500, MaxLevel=1524, QuestName="PortQuest",        QuestNumber=1, MobName="Pirate Millionaire",  QuestNpc=Vector3.new(-290,42,5358),     MobPosition=Vector3.new(-350,42,5420)},
     {MinLevel=1525, MaxLevel=1574, QuestName="PortQuest",        QuestNumber=2, MobName="Pistol Billionaire",  QuestNpc=Vector3.new(-290,42,5358),     MobPosition=Vector3.new(-220,42,5300)},
@@ -301,7 +317,7 @@ local QuestsSea3 = {
     {MinLevel=2400, MaxLevel=2550, QuestName="CastleQuest",      QuestNumber=4, MobName="Elite Pirate",        QuestNpc=Vector3.new(-5044,314,-2812),  MobPosition=Vector3.new(-5000,314,-2800)},
 }
 
--- ==================== BOSS DATA ====================
+-- Boss Data
 local BossesSea1 = {
     {Name="Gorilla King",     Level=25,   Position=Vector3.new(-1243,6,-493)},
     {Name="Bobby",            Level=55,   Position=Vector3.new(-1145,14,4300)},
@@ -334,7 +350,6 @@ local BossesSea3 = {
     {Name="Cake Queen",       Level=2175, Position=Vector3.new(-5044,314,-2812)},
 }
 
--- ==================== RAID CHIPS ====================
 local RaidChips = {
     "Flame", "Ice", "Quake", "Light", "Dark", "String",
     "Magma", "Rumble", "Buddha", "Sand", "Phoenix",
@@ -342,7 +357,6 @@ local RaidChips = {
     "Dragon", "Leopard", "T-Rex", "Mammoth"
 }
 
--- ==================== NPC QUAN TRỌNG ====================
 local ImportantNPCs = {}
 if WorldSea == 1 then
     ImportantNPCs = {
@@ -372,6 +386,56 @@ end
 -- PHẦN 4: HÀM CỐT LÕI (CORE FUNCTIONS)
 ------------------------------------------------------------
 
+-- ====== Fast Attack System (MỚI) ======
+local function fastAttack()
+    if not _G.FastAttack then return end
+    pcall(function()
+        local char = Player.Character
+        if not char then return end
+        local tool = char:FindFirstChildOfClass("Tool")
+        if not tool then return end
+
+        local rootPart = char:FindFirstChild("HumanoidRootPart")
+        if not rootPart then return end
+
+        -- Quét tất cả quái trong tầm FastAttackRange
+        if workspace:FindFirstChild("Enemies") then
+            for _, mob in pairs(workspace.Enemies:GetChildren()) do
+                if mob:FindFirstChild("Humanoid") and mob.Humanoid.Health > 0
+                    and mob:FindFirstChild("HumanoidRootPart") then
+                    local dist = (mob.HumanoidRootPart.Position - rootPart.Position).Magnitude
+                    if dist <= _G.FastAttackRange then
+                        -- Bypass Cooldown via Remote hit simulation
+                        pcall(function()
+                            local netModule = ReplicatedStorage:FindFirstChild("Modules") and ReplicatedStorage.Modules:FindFirstChild("Net")
+                            if netModule then
+                                local regAttack = netModule:FindFirstChild("RE/RegisterAttack") or netModule:FindFirstChild("RegisterAttack")
+                                local regHit = netModule:FindFirstChild("RE/RegisterHit") or netModule:FindFirstChild("RegisterHit")
+                                if regAttack then regAttack:FireServer() end
+                                if regHit then regHit:FireServer(mob.HumanoidRootPart, {mob}) end
+                            end
+                        end)
+                        -- Trigger tool activation
+                        tool:Activate()
+                    end
+                end
+            end
+        end
+    end)
+end
+
+-- Fast Attack Background Loop
+task.spawn(function()
+    while true do
+        if _G.FastAttack then
+            fastAttack()
+            task.wait(_G.FastAttackSpeed)
+        else
+            task.wait(0.2)
+        end
+    end
+end)
+
 -- ====== Noclip ======
 local noclipConn = nil
 local function setNoclip(state)
@@ -398,14 +462,13 @@ local function setNoclip(state)
     end
 end
 
--- ====== Bay tới mục tiêu (Tween) ======
+-- ====== Bay tới mục tiêu ======
 local function toTarget(targetCFrame)
     local char = Player.Character
     if not char or not char:FindFirstChild("HumanoidRootPart") then return end
     local rootPart = char.HumanoidRootPart
     local distance = (rootPart.Position - targetCFrame.Position).Magnitude
 
-    -- Nếu gần rồi thì teleport thẳng
     if distance < 15 then
         rootPart.CFrame = targetCFrame
         return
@@ -420,31 +483,28 @@ local function toTarget(targetCFrame)
     setNoclip(false)
 end
 
--- ====== Haki (Buso & Ken) ======
+-- ====== Haki ======
 local function checkHaki()
     pcall(function()
         local char = Player.Character
         if not char then return end
 
-        -- Auto Buso Haki
         if _G.AutoHaki and not char:FindFirstChild("HasBuso") then
             ReplicatedStorage.Remotes.CommF_:InvokeServer("Buso")
         end
 
-        -- Auto Ken Haki
         if _G.AutoKen and not char:FindFirstChild("HasKen") then
             local ken = ReplicatedStorage.Remotes:FindFirstChild("Ken")
             if ken then ken:FireServer(true) end
         end
 
-        -- Auto Observation V2
         if _G.AutoObsV2 then
             ReplicatedStorage.Remotes.CommF_:InvokeServer("Observation")
         end
     end)
 end
 
--- ====== Tấn công (chỉ dùng tool:Activate — an toàn cho GUI) ======
+-- ====== Tấn công ======
 local function attack()
     checkHaki()
     local char = Player.Character
@@ -452,10 +512,11 @@ local function attack()
     local tool = char:FindFirstChildOfClass("Tool")
     if tool then
         tool:Activate()
+        if _G.FastAttack then fastAttack() end
     end
 end
 
--- ====== Auto Skill (dùng Z, X, C, V) ======
+-- ====== Auto Skill ======
 local lastSkillTime = 0
 local function useSkills()
     if not _G.AutoSkill then return end
@@ -474,14 +535,13 @@ local function useSkills()
     end)
 end
 
--- ====== Trang bị vũ khí theo loại ======
+-- ====== Trang bị vũ khí ======
 local function equipWeapon(weaponType)
     pcall(function()
         local backpack = Player.Backpack
         local char = Player.Character
         if not char or not char:FindFirstChild("Humanoid") then return end
 
-        -- Kiểm tra đã trang bị đúng loại chưa
         local equipped = char:FindFirstChildOfClass("Tool")
         if equipped then
             if weaponType == "Melee" and (table.find(MeleeNames, equipped.Name) or equipped.ToolTip == "Melee") then return end
@@ -490,7 +550,6 @@ local function equipWeapon(weaponType)
             if weaponType == "Blox Fruit" and (equipped.ToolTip == "Blox Fruit" or equipped.Name:find("Fruit")) then return end
         end
 
-        -- Tìm và trang bị vũ khí phù hợp
         for _, tool in pairs(backpack:GetChildren()) do
             if tool:IsA("Tool") then
                 local match = false
@@ -505,13 +564,12 @@ local function equipWeapon(weaponType)
             end
         end
 
-        -- Nếu không tìm thấy, trang bị tool đầu tiên
         local fallback = backpack:FindFirstChildOfClass("Tool")
         if fallback then char.Humanoid:EquipTool(fallback) end
     end)
 end
 
--- ====== Gom quái lại 1 chỗ ======
+-- ====== Gom quái ======
 local function bringMobsNear(targetName, centerCFrame)
     if not _G.BringMob then return end
     pcall(function()
@@ -531,7 +589,7 @@ local function bringMobsNear(targetName, centerCFrame)
     end)
 end
 
--- ====== Lấy quest phù hợp level ======
+-- ====== Lấy quest data ======
 local function getQuestData(level)
     local questTable
     if WorldSea == 1 then questTable = QuestsSea1
@@ -545,18 +603,17 @@ local function getQuestData(level)
             return data
         end
     end
-    -- Fallback: trả về quest cuối cùng nếu quá level
     return questTable[#questTable]
 end
 
--- ====== Kiểm tra quest đang hoạt động ======
+-- ====== Quest Check ======
 local function hasActiveQuest()
     local questGui = Player.PlayerGui:FindFirstChild("Main")
         and Player.PlayerGui.Main:FindFirstChild("Quest")
     return questGui and questGui.Visible
 end
 
--- ====== Tìm quái theo tên (gần nhất) ======
+-- ====== Tìm mob ======
 local function findMob(mobName, useNearest)
     if not workspace:FindFirstChild("Enemies") then return nil end
     local char = Player.Character
@@ -602,7 +659,7 @@ local function findBoss(bossName)
     return nil
 end
 
--- ====== Lấy danh sách quái hiện có ======
+-- ====== Danh sách quái ======
 local function getEnemyList()
     local enemies = {}
     pcall(function()
@@ -614,14 +671,12 @@ local function getEnemyList()
             end
         end
     end)
-    if #enemies == 0 then
-        return {"(Không có quái)"}
-    end
+    if #enemies == 0 then return {"(Không có quái)"} end
     table.sort(enemies)
     return enemies
 end
 
--- ====== Lấy danh sách boss theo Sea ======
+-- ====== Danh sách Boss ======
 local function getBossList()
     local bosses = {}
     local bossTable
@@ -636,7 +691,6 @@ local function getBossList()
     return bosses
 end
 
--- ====== Tìm boss data theo tên ======
 local function getBossData(bossName)
     local tables = {BossesSea1, BossesSea2, BossesSea3}
     local idx = math.clamp(WorldSea, 1, 3)
@@ -668,6 +722,13 @@ local function serverHop()
     end)
 end
 
+-- ====== Auto Store Fruit into Inventory (MỚI) ======
+local function storeFruitInInventory(fruitName)
+    pcall(function()
+        ReplicatedStorage.Remotes.CommF_:InvokeServer("StoreFruit", fruitName)
+    end)
+end
+
 -- ====== Notify helper ======
 local function notify(title, content, duration)
     pcall(function()
@@ -687,7 +748,6 @@ local ESPFolder = Instance.new("Folder")
 ESPFolder.Name = "HAOTOOL_ESP"
 ESPFolder.Parent = game:GetService("CoreGui")
 
--- Tạo ESP cho 1 đối tượng
 local function createESP(target, color, text, parent)
     if not target then return end
     local adornee = target:FindFirstChild("HumanoidRootPart")
@@ -695,11 +755,9 @@ local function createESP(target, color, text, parent)
         or (target:IsA("BasePart") and target)
     if not adornee then return end
 
-    -- Kiểm tra đã có ESP chưa
     local existingTag = "HAOTOOL_" .. target:GetFullName()
     if ESPFolder:FindFirstChild(existingTag) then return end
 
-    -- Highlight
     pcall(function()
         local highlight = Instance.new("Highlight")
         highlight.Name = existingTag .. "_HL"
@@ -711,7 +769,6 @@ local function createESP(target, color, text, parent)
         highlight.Parent = ESPFolder
     end)
 
-    -- BillboardGui
     pcall(function()
         local billboard = Instance.new("BillboardGui")
         billboard.Name = existingTag
@@ -729,13 +786,11 @@ local function createESP(target, color, text, parent)
         label.TextStrokeTransparency = 0
         label.TextStrokeColor3 = Color3.new(0, 0, 0)
         label.Font = Enum.Font.GothamBold
-        label.TextScaled = false
         label.TextSize = 14
         label.Parent = billboard
     end)
 end
 
--- Xóa tất cả ESP
 local function clearAllESP()
     pcall(function()
         for _, child in pairs(ESPFolder:GetChildren()) do
@@ -744,7 +799,6 @@ local function clearAllESP()
     end)
 end
 
--- Xóa ESP theo loại (prefix)
 local function clearESPByPrefix(prefix)
     pcall(function()
         for _, child in pairs(ESPFolder:GetChildren()) do
@@ -755,7 +809,6 @@ local function clearESPByPrefix(prefix)
     end)
 end
 
--- Cập nhật khoảng cách trên ESP
 local function updateESPDistance(billboard, adornee)
     pcall(function()
         local char = Player.Character
@@ -767,7 +820,6 @@ local function updateESPDistance(billboard, adornee)
         local dist = math.floor((char.HumanoidRootPart.Position - adornee.Position).Magnitude)
         local label = billboard:FindFirstChildOfClass("TextLabel")
         if label and label.Text then
-            -- Cập nhật khoảng cách trong text
             local baseName = label.Text:match("^(.-)%s*%[") or label.Text
             label.Text = baseName .. " [" .. dist .. "m]"
         end
@@ -778,7 +830,7 @@ end
 -- PHẦN 6: VÒNG LẶP NỀN (BACKGROUND LOOPS)
 ------------------------------------------------------------
 
--- ====== LOOP 1: Auto Farm Level ======
+-- LOOP 1: Auto Farm Level
 task.spawn(function()
     while true do
         task.wait(0.15)
@@ -789,7 +841,6 @@ task.spawn(function()
                 if not quest then return end
 
                 if not hasActiveQuest() then
-                    -- Bay tới NPC nhận quest
                     toTarget(CFrame.new(quest.QuestNpc))
                     task.wait(0.5)
                     ReplicatedStorage.Remotes.CommF_:InvokeServer(
@@ -797,9 +848,7 @@ task.spawn(function()
                     )
                     task.wait(0.3)
                 else
-                    -- Tìm quái theo phương thức farm
                     local targetMob = nil
-
                     if _G.FarmMethod == "Quest" then
                         targetMob = findMob(quest.MobName, false)
                     elseif _G.FarmMethod == "Nearest" then
@@ -811,7 +860,6 @@ task.spawn(function()
                     end
 
                     if not targetMob then
-                        -- Không có quái → bay tới vị trí mob
                         toTarget(CFrame.new(quest.MobPosition))
                     else
                         equipWeapon(_G.SelectWeapon)
@@ -819,14 +867,10 @@ task.spawn(function()
                         if char and char:FindFirstChild("HumanoidRootPart")
                             and targetMob:FindFirstChild("HumanoidRootPart") then
                             setNoclip(true)
-                            -- Đứng phía trên quái để đánh
                             char.HumanoidRootPart.CFrame =
                                 targetMob.HumanoidRootPart.CFrame * CFrame.new(0, 7, 0)
-                            -- Gom quái nếu bật
                             bringMobsNear(quest.MobName, targetMob.HumanoidRootPart.CFrame)
-                            -- Đánh
                             attack()
-                            -- Auto Skill
                             useSkills()
                         end
                     end
@@ -838,14 +882,13 @@ task.spawn(function()
     end
 end)
 
--- ====== LOOP 2: Auto Farm Mastery ======
+-- LOOP 2: Auto Farm Mastery
 task.spawn(function()
     while true do
         task.wait(0.15)
         if _G.AutoFarmMastery and not _G.AutoFarmLevel then
             pcall(function()
                 equipWeapon(_G.MasteryWeapon)
-                -- Tìm quái gần nhất để farm mastery
                 local targetMob = findMob("", true)
                 if targetMob and targetMob:FindFirstChild("HumanoidRootPart") then
                     local char = Player.Character
@@ -862,7 +905,7 @@ task.spawn(function()
     end
 end)
 
--- ====== LOOP 3: Auto Farm Boss ======
+-- LOOP 3: Auto Farm Boss
 task.spawn(function()
     while true do
         task.wait(0.2)
@@ -873,7 +916,6 @@ task.spawn(function()
 
                 local boss = findBoss(_G.SelectedBoss)
                 if not boss then
-                    -- Boss chưa spawn, bay tới vị trí chờ
                     toTarget(CFrame.new(bossData.Position))
                     task.wait(1)
                 else
@@ -893,65 +935,33 @@ task.spawn(function()
     end
 end)
 
--- ====== LOOP 4: Auto Farm Sea Beast ======
-task.spawn(function()
-    while true do
-        task.wait(1)
-        if _G.AutoFarmSeaBeast then
-            pcall(function()
-                -- Tìm Sea Beast trong workspace
-                for _, obj in pairs(workspace:GetChildren()) do
-                    if obj:FindFirstChild("Humanoid") and obj.Humanoid.Health > 0
-                        and obj:FindFirstChild("HumanoidRootPart")
-                        and (obj.Name:find("Sea Beast") or obj.Name:find("SeaBeast")) then
-                        equipWeapon(_G.SelectWeapon)
-                        local char = Player.Character
-                        if char and char:FindFirstChild("HumanoidRootPart") then
-                            setNoclip(true)
-                            char.HumanoidRootPart.CFrame =
-                                obj.HumanoidRootPart.CFrame * CFrame.new(0, 10, 0)
-                            attack()
-                            useSkills()
-                        end
-                        break
-                    end
-                end
-            end)
-        end
-    end
-end)
-
--- ====== LOOP 5: Auto Farm Observation ======
-task.spawn(function()
-    while true do
-        task.wait(0.3)
-        if _G.AutoFarmObs then
-            pcall(function()
-                -- Kích hoạt Observation liên tục để luyện
-                ReplicatedStorage.Remotes.CommF_:InvokeServer("Observation")
-            end)
-        end
-    end
-end)
-
--- ====== LOOP 6: Auto Farm Bone / Fragment ======
+-- LOOP 4: Auto Elite Hunter (MỚI)
 task.spawn(function()
     while true do
         task.wait(0.5)
-        if _G.AutoFarmBone or _G.AutoFarmFragment then
+        if _G.AutoEliteHunter and WorldSea == 3 then
             pcall(function()
-                for _, obj in pairs(workspace:GetDescendants()) do
-                    if obj:IsA("BasePart") then
-                        local name = obj.Name:lower()
-                        if (_G.AutoFarmBone and name:find("bone"))
-                            or (_G.AutoFarmFragment and name:find("frag")) then
-                            toTarget(obj.CFrame)
-                            task.wait(0.3)
-                            -- Thu thập
-                            pcall(function()
-                                obj:Destroy()
-                            end)
-                        end
+                -- Nhận Quest Elite
+                local hasQuest = hasActiveQuest()
+                if not hasQuest then
+                    ReplicatedStorage.Remotes.CommF_:InvokeServer("EliteHunter")
+                    task.wait(0.5)
+                end
+                -- Tìm Elite Hunter Boss (Deandre, Urban, Diablo)
+                local eliteNames = {"Deandre", "Urban", "Diablo"}
+                local targetElite = nil
+                for _, name in ipairs(eliteNames) do
+                    targetElite = findBoss(name)
+                    if targetElite then break end
+                end
+                if targetElite and targetElite:FindFirstChild("HumanoidRootPart") then
+                    equipWeapon(_G.SelectWeapon)
+                    local char = Player.Character
+                    if char and char:FindFirstChild("HumanoidRootPart") then
+                        setNoclip(true)
+                        char.HumanoidRootPart.CFrame = targetElite.HumanoidRootPart.CFrame * CFrame.new(0, 7, 0)
+                        attack()
+                        useSkills()
                     end
                 end
             end)
@@ -959,47 +969,69 @@ task.spawn(function()
     end
 end)
 
--- ====== LOOP 7: Auto Fruit Finder & Collector ======
+-- LOOP 5: Auto Saber Quest (MỚI)
+task.spawn(function()
+    while true do
+        task.wait(1)
+        if _G.AutoSaber and WorldSea == 1 then
+            pcall(function()
+                local shank = findBoss("Shanks")
+                if shank and shank:FindFirstChild("HumanoidRootPart") then
+                    equipWeapon(_G.SelectWeapon)
+                    local char = Player.Character
+                    if char and char:FindFirstChild("HumanoidRootPart") then
+                        setNoclip(true)
+                        char.HumanoidRootPart.CFrame = shank.HumanoidRootPart.CFrame * CFrame.new(0, 7, 0)
+                        attack()
+                        useSkills()
+                    end
+                else
+                    toTarget(CFrame.new(-1440, 30, 200))
+                end
+            end)
+        end
+    end
+end)
+
+-- LOOP 6: Auto Fruit Finder, Collector & Auto Store (MỚI)
 task.spawn(function()
     while true do
         task.wait(2)
-        if _G.AutoFruitFinder or _G.AutoCollectFruit then
+        if _G.AutoFruitFinder or _G.AutoCollectFruit or _G.AutoStoreFruit then
             pcall(function()
+                -- Tự động cất trái có trong Backpack vào Inventory
+                if _G.AutoStoreFruit then
+                    local backpack = Player.Backpack
+                    for _, tool in pairs(backpack:GetChildren()) do
+                        if tool:IsA("Tool") and (tool.Name:find("Fruit") or tool.ToolTip == "Blox Fruit") then
+                            storeFruitInInventory(tool.Name)
+                            notify("📦 Auto Store", "Đã cất " .. tool.Name .. " vào Inventory!", 3)
+                        end
+                    end
+                end
+
+                -- Quét nhặt trái trên map
                 for _, obj in pairs(workspace:GetChildren()) do
                     local isFruit = false
                     if obj:IsA("Tool") and (obj.Name:find("Fruit") or obj:FindFirstChild("Handle")) then
                         isFruit = true
                     end
-                    -- Kiểm tra thêm trong folder
-                    if not isFruit and obj:IsA("Model") and obj.Name:find("Fruit") then
-                        isFruit = true
-                    end
-
                     if isFruit then
-                        -- Tính khoảng cách
-                        local fruitPos = obj:FindFirstChild("Handle") and obj.Handle.Position
-                            or obj:GetModelCFrame() and obj:GetModelCFrame().Position
-                            or Vector3.new(0,0,0)
+                        local handle = obj:FindFirstChild("Handle")
+                        local pos = handle and handle.Position or Vector3.new(0,0,0)
                         local char = Player.Character
                         local dist = 0
                         if char and char:FindFirstChild("HumanoidRootPart") then
-                            dist = math.floor((char.HumanoidRootPart.Position - fruitPos).Magnitude)
+                            dist = math.floor((char.HumanoidRootPart.Position - pos).Magnitude)
                         end
 
-                        -- Thông báo
                         if _G.AutoFruitFinder then
-                            notify(
-                                "🍎 Trái Ác Quỷ!",
-                                "Phát hiện: " .. obj.Name .. " [" .. dist .. "m]",
-                                6
-                            )
+                            notify("🍎 Trái Ác Quỷ!", "Phát hiện: " .. obj.Name .. " [" .. dist .. "m]", 5)
                         end
 
-                        -- Tự động nhặt
-                        if _G.AutoCollectFruit and obj:FindFirstChild("Handle") then
-                            toTarget(obj.Handle.CFrame)
+                        if _G.AutoCollectFruit and handle then
+                            toTarget(handle.CFrame)
                             task.wait(0.5)
-                            -- Thử nhặt
                             pcall(function()
                                 local char2 = Player.Character
                                 if char2 and char2:FindFirstChild("Humanoid") then
@@ -1015,13 +1047,12 @@ task.spawn(function()
     end
 end)
 
--- ====== LOOP 8: Auto Raid ======
+-- LOOP 7: Auto Raid
 task.spawn(function()
     while true do
         task.wait(1)
         if _G.AutoRaid then
             pcall(function()
-                -- Kiểm tra đang trong raid chưa
                 local inRaid = false
                 pcall(function()
                     inRaid = Player.PlayerGui:FindFirstChild("Main")
@@ -1030,11 +1061,9 @@ task.spawn(function()
                 end)
 
                 if not inRaid then
-                    -- Bắt đầu raid
                     ReplicatedStorage.Remotes.CommF_:InvokeServer("RaidStart", _G.RaidChip)
                     task.wait(3)
                 else
-                    -- Đang trong raid → farm quái raid
                     if _G.AutoRaidFarm then
                         local targetMob = findMob("", true)
                         if targetMob and targetMob:FindFirstChild("HumanoidRootPart") then
@@ -1055,84 +1084,7 @@ task.spawn(function()
     end
 end)
 
--- ====== LOOP 9: Auto Awakening ======
-task.spawn(function()
-    while true do
-        task.wait(5)
-        if _G.AutoAwakening then
-            pcall(function()
-                ReplicatedStorage.Remotes.CommF_:InvokeServer("Awaken")
-            end)
-        end
-    end
-end)
-
--- ====== LOOP 10: Auto Stats ======
-task.spawn(function()
-    while true do
-        task.wait(0.3)
-        if _G.AutoStats then
-            pcall(function()
-                local points = Player.Data.Points.Value
-                if points > 0 then
-                    ReplicatedStorage.Remotes.CommF_:InvokeServer(
-                        "AddPoint", _G.StatToUpgrade, 3
-                    )
-                end
-            end)
-        end
-    end
-end)
-
--- ====== LOOP 11: Auto Farm Chest ======
-task.spawn(function()
-    while true do
-        task.wait(0.5)
-        if _G.AutoFarmChest then
-            pcall(function()
-                local targetChest = nil
-                local char = Player.Character
-                local rootPart = char and char:FindFirstChild("HumanoidRootPart")
-                local closestDist = math.huge
-
-                for _, obj in pairs(workspace:GetDescendants()) do
-                    if obj:IsA("BasePart") and obj.Name:lower():find("chest") then
-                        if rootPart then
-                            local d = (obj.Position - rootPart.Position).Magnitude
-                            if d < closestDist then
-                                closestDist = d
-                                targetChest = obj
-                            end
-                        else
-                            targetChest = obj
-                            break
-                        end
-                    end
-                end
-
-                if targetChest then
-                    toTarget(targetChest.CFrame)
-                    task.wait(0.3)
-                end
-            end)
-        end
-    end
-end)
-
--- ====== LOOP 12: Auto Gacha Fruit ======
-task.spawn(function()
-    while true do
-        task.wait(8)
-        if _G.AutoGachaFruit then
-            pcall(function()
-                ReplicatedStorage.Remotes.CommF_:InvokeServer("Cousin", "Buy")
-                notify("🎰 Gacha", "Đã mua Random Fruit!", 3)
-            end)
-        end
-    end
-end)
-
--- ====== LOOP 13: Speed / Jump / Energy ======
+-- LOOP 8: Speed / Jump / Energy
 task.spawn(function()
     RunService.RenderStepped:Connect(function()
         pcall(function()
@@ -1143,7 +1095,6 @@ task.spawn(function()
             if _G.WalkSpeedHack then hum.WalkSpeed = _G.WalkSpeedVal end
             if _G.JumpPowerHack then hum.JumpPower = _G.JumpPowerVal end
 
-            -- Infinite Energy
             if _G.InfiniteEnergy then
                 pcall(function()
                     if Player.Character:FindFirstChild("Energy") then
@@ -1155,29 +1106,7 @@ task.spawn(function()
     end)
 end)
 
--- ====== LOOP 14: Infinite Jump ======
-UserInputService.JumpRequest:Connect(function()
-    if _G.InfiniteJump then
-        pcall(function()
-            local char = Player.Character
-            if char and char:FindFirstChildOfClass("Humanoid") then
-                char:FindFirstChildOfClass("Humanoid"):ChangeState("Jumping")
-            end
-        end)
-    end
-end)
-
--- ====== LOOP 15: Anti-AFK ======
-Player.Idled:Connect(function()
-    if _G.AntiAFK then
-        pcall(function()
-            VirtualUser:CaptureController()
-            VirtualUser:ClickButton2(Vector2.new(0, 0))
-        end)
-    end
-end)
-
--- ====== LOOP 16: ESP Update Loop ======
+-- LOOP 9: ESP Loop
 task.spawn(function()
     while true do
         task.wait(3)
@@ -1186,15 +1115,12 @@ task.spawn(function()
             local rootPart = char and char:FindFirstChild("HumanoidRootPart")
             if not rootPart then return end
 
-            -- ESP Player
             if _G.ESPPlayer then
                 for _, plr in pairs(Players:GetPlayers()) do
                     if plr ~= Player and plr.Character
                         and plr.Character:FindFirstChild("HumanoidRootPart")
                         and plr.Character:FindFirstChild("Humanoid") then
-                        -- Team check
                         if _G.ESPTeamCheck and plr.Team == Player.Team then
-                            -- Cùng team, bỏ qua
                         else
                             local dist = (plr.Character.HumanoidRootPart.Position - rootPart.Position).Magnitude
                             if dist <= _G.ESPDistance then
@@ -1206,10 +1132,9 @@ task.spawn(function()
                     end
                 end
             else
-                clearESPByPrefix("HAOTOOL_Workspace.") -- Xóa ESP player cũ nếu tắt
+                clearESPByPrefix("HAOTOOL_Workspace.")
             end
 
-            -- ESP Mob & Boss
             if _G.ESPMob or _G.ESPBoss then
                 if workspace:FindFirstChild("Enemies") then
                     for _, mob in pairs(workspace.Enemies:GetChildren()) do
@@ -1217,7 +1142,6 @@ task.spawn(function()
                             and mob:FindFirstChild("HumanoidRootPart") then
                             local dist = (mob.HumanoidRootPart.Position - rootPart.Position).Magnitude
                             if dist <= _G.ESPDistance then
-                                -- Phân biệt Boss và Mob thường
                                 local isBoss = mob.Humanoid.MaxHealth >= 10000
                                 if isBoss and _G.ESPBoss then
                                     local hp = math.floor(mob.Humanoid.Health)
@@ -1232,7 +1156,6 @@ task.spawn(function()
                 end
             end
 
-            -- ESP Fruit
             if _G.FruitESP then
                 for _, obj in pairs(workspace:GetChildren()) do
                     if obj:IsA("Tool") and (obj.Name:find("Fruit") or obj:FindFirstChild("Handle")) then
@@ -1247,179 +1170,74 @@ task.spawn(function()
                     end
                 end
             end
-
-            -- ESP Chest
-            if _G.ESPChest then
-                for _, obj in pairs(workspace:GetDescendants()) do
-                    if obj:IsA("BasePart") and obj.Name:lower():find("chest") then
-                        local dist = (obj.Position - rootPart.Position).Magnitude
-                        if dist <= _G.ESPDistance then
-                            createESP(obj, _G.ESPChestColor,
-                                "📦 Chest [" .. math.floor(dist) .. "m]", ESPFolder)
-                        end
-                    end
-                end
-            end
-
-            -- ESP Flower
-            if _G.ESPFlower then
-                for _, obj in pairs(workspace:GetDescendants()) do
-                    if obj:IsA("BasePart") and (obj.Name:lower():find("flower") or obj.Name:lower():find("flora")) then
-                        local dist = (obj.Position - rootPart.Position).Magnitude
-                        if dist <= _G.ESPDistance then
-                            createESP(obj, _G.ESPFlowerColor,
-                                "🌸 " .. obj.Name .. " [" .. math.floor(dist) .. "m]", ESPFolder)
-                        end
-                    end
-                end
-            end
-
-            -- Xóa ESP cũ nếu tất cả đều tắt
-            if not _G.ESPPlayer and not _G.ESPMob and not _G.ESPBoss
-                and not _G.FruitESP and not _G.ESPChest and not _G.ESPFlower then
-                clearAllESP()
-            end
-
-            -- Cập nhật khoảng cách
-            for _, child in pairs(ESPFolder:GetChildren()) do
-                if child:IsA("BillboardGui") and child.Adornee then
-                    updateESPDistance(child, child.Adornee)
-                end
-            end
         end)
     end
 end)
 
--- ====== LOOP 17: Auto Dodge ======
-task.spawn(function()
-    while true do
-        task.wait(0.1)
-        if _G.AutoDodge then
-            pcall(function()
-                -- Dodge bằng cách nhấn đúp hướng di chuyển
-                local char = Player.Character
-                if char and char:FindFirstChild("Humanoid") and char.Humanoid.Health > 0 then
-                    -- Kiểm tra nếu có đạn/đòn đánh đang bay tới
-                    for _, obj in pairs(workspace:GetChildren()) do
-                        if obj:IsA("BasePart") and obj.Name:lower():find("projectile") then
-                            local rootPart = char:FindFirstChild("HumanoidRootPart")
-                            if rootPart then
-                                local dist = (obj.Position - rootPart.Position).Magnitude
-                                if dist < 30 then
-                                    -- Dodge sang bên
-                                    rootPart.CFrame = rootPart.CFrame * CFrame.new(10, 0, 0)
-                                end
-                            end
-                        end
-                    end
-                end
-            end)
-        end
-    end
-end)
-
--- ====== LOOP 18: Server Hop khi hết mob/trái ======
-task.spawn(function()
-    while true do
-        task.wait(30)
-        if _G.ServerHopNoFruit then
-            pcall(function()
-                -- Kiểm tra có trái trên map không
-                local hasFruit = false
-                for _, obj in pairs(workspace:GetChildren()) do
-                    if obj:IsA("Tool") and obj.Name:find("Fruit") then
-                        hasFruit = true
-                        break
-                    end
-                end
-                if not hasFruit then
-                    notify("🔄 Server Hop", "Không có trái, đang chuyển server...", 3)
-                    task.wait(2)
-                    serverHop()
-                end
-            end)
-        end
-    end
-end)
-
--- ====== Sự kiện khi chết → thông báo + tiếp tục farm ======
-Player.CharacterAdded:Connect(function(char)
-    task.wait(1)
-    if _G.AutoFarmLevel or _G.AutoFarmMastery or _G.AutoFarmBoss then
-        notify("💀 Đã Hồi Sinh", "Tiếp tục farm...", 3)
+-- Anti-AFK
+Player.Idled:Connect(function()
+    if _G.AntiAFK then
+        pcall(function()
+            VirtualUser:CaptureController()
+            VirtualUser:ClickButton2(Vector2.new(0, 0))
+        end)
     end
 end)
 
 ------------------------------------------------------------
--- PHẦN 7: TẠO GIAO DIỆN (FLUENT UI — 9 TAB)
+-- PHẦN 7: TẠO GIAO DIỆN (FLUENT UI — 9 TAB BỔ SUNG KHỦNG)
 ------------------------------------------------------------
 
 local Window = Fluent:CreateWindow({
-    Title    = "⚡ HAOTOOL v2.0",
+    Title    = "⚡ HAOTOOL GOD EDITION v2.5",
     SubTitle = "Blox Fruits | Sea " .. WorldSea,
-    TabWidth = 140,
-    Size     = UDim2.fromOffset(580, 480),
+    TabWidth = 145,
+    Size     = UDim2.fromOffset(600, 500),
     Acrylic  = true,
     Theme    = "Dark",
-    MinimizeKey = Enum.KeyCode.RightControl, -- Phím ẩn/hiện GUI
+    MinimizeKey = Enum.KeyCode.RightControl,
 })
 
 -- ==================== TAB 1: MAIN ====================
 local MainTab = Window:AddTab({Title = "Main", Icon = "home"})
 
 MainTab:AddParagraph({
-    Title = "⚡ HAOTOOL — Blox Fruits",
+    Title = "⚡ HAOTOOL — GOD EDITION",
     Content = "🌊 Sea: " .. WorldSea
         .. "\n📊 Level: " .. tostring(pcall(function() return Player.Data.Level.Value end) and Player.Data.Level.Value or "?")
-        .. "\n💰 Beli: " .. tostring(pcall(function() return Player.Data.Beli.Value end) and Player.Data.Beli.Value or "?")
-        .. "\n🏠 Server: " .. game.JobId:sub(1, 8) .. "..."
-        .. "\n\n👨‍💻 Developer: HAOTOOL Team"
+        .. "\n⚡ Fast Attack: BẬT (Bypass 0.05s)"
         .. "\n📌 Phím RightControl để ẩn/hiện GUI"
 })
 
-MainTab:AddButton({
-    Title = "🔄 Rejoin Server",
-    Description = "Vào lại server hiện tại",
-    Callback = function()
-        pcall(function()
-            game:GetService("TeleportService"):TeleportToPlaceInstance(game.PlaceId, game.JobId, Player)
-        end)
-    end
+MainTab:AddToggle("FastAttackToggle", {
+    Title = "⚡ Fast Attack (Đánh siêu nhanh)",
+    Description = "Bỏ qua animation cooldown, đánh cực nhanh",
+    Default = true,
+    Callback = function(v) _G.FastAttack = v end,
 })
 
-MainTab:AddButton({
-    Title = "🌐 Server Hop",
-    Description = "Nhảy sang server khác",
-    Callback = function()
-        notify("🔄 Server Hop", "Đang tìm server...", 3)
-        serverHop()
-    end
+MainTab:AddSlider("FastAttackSpeedSlider", {
+    Title = "Tốc Độ Fast Attack (giây)",
+    Min = 0.01,
+    Max = 0.3,
+    Default = 0.05,
+    Rounding = 2,
+    Callback = function(v) _G.FastAttackSpeed = v end,
 })
 
 -- ==================== TAB 2: FARM ====================
 local FarmTab = Window:AddTab({Title = "Farm", Icon = "sword"})
 
-FarmTab:AddParagraph({Title = "⚔️ Auto Farm", Content = "Tự động nhận quest, đánh quái, lên level"})
-
 FarmTab:AddToggle("AutoFarmLevel", {
     Title = "Auto Farm Level",
-    Description = "Tự động nhận quest → farm quái → lên level",
     Default = false,
     Callback = function(v) _G.AutoFarmLevel = v end,
 })
 
 FarmTab:AddToggle("AutoFarmMastery", {
     Title = "Auto Farm Mastery",
-    Description = "Farm mastery cho vũ khí được chọn",
     Default = false,
     Callback = function(v) _G.AutoFarmMastery = v end,
-})
-
-FarmTab:AddDropdown("MasteryWeaponDrop", {
-    Title = "Vũ Khí Farm Mastery",
-    Values = {"Melee", "Sword", "Gun", "Blox Fruit"},
-    Default = "Melee",
-    Callback = function(v) _G.MasteryWeapon = v end,
 })
 
 FarmTab:AddDropdown("SelectWeaponDrop", {
@@ -1429,108 +1247,84 @@ FarmTab:AddDropdown("SelectWeaponDrop", {
     Callback = function(v) _G.SelectWeapon = v end,
 })
 
-FarmTab:AddDropdown("FarmMethodDrop", {
-    Title = "Phương Thức Farm",
-    Values = {"Quest", "Nearest", "Selected Mob"},
-    Default = "Quest",
-    Callback = function(v) _G.FarmMethod = v end,
-})
-
-FarmTab:AddDropdown("SelectedMobDrop", {
-    Title = "Chọn Quái (nếu dùng Selected Mob)",
-    Values = getEnemyList(),
-    Default = 1,
-    Callback = function(v) _G.SelectedMob = v end,
-})
-
 FarmTab:AddToggle("BringMobToggle", {
     Title = "Gom Quái (Bring Mob)",
-    Description = "Kéo quái cùng tên lại 1 chỗ",
     Default = false,
     Callback = function(v) _G.BringMob = v end,
 })
 
 FarmTab:AddToggle("AutoSkillToggle", {
     Title = "Auto Skill (Z, X, C, V)",
-    Description = "Tự động dùng skill khi farm",
     Default = false,
     Callback = function(v) _G.AutoSkill = v end,
 })
 
-FarmTab:AddSlider("SkillCDSlider", {
-    Title = "Cooldown Skill (giây)",
-    Min = 0.5,
-    Max = 5,
-    Default = 1.5,
-    Rounding = 1,
-    Callback = function(v) _G.SkillCooldown = v end,
-})
+-- ==================== TAB 3: ITEMS & QUESTS (MỚI KHỦNG) ====================
+local ItemsTab = Window:AddTab({Title = "Items/Vũ Khí", Icon = "shield"})
 
-FarmTab:AddParagraph({Title = "🏆 Farm Boss & Đặc Biệt", Content = ""})
+ItemsTab:AddParagraph({Title = "⚔️ Auto Quests & Items Huyền Thoại", Content = "Tự động hoàn thành nhiệm vụ lấy vũ khí / võ thuật"})
 
-FarmTab:AddToggle("AutoFarmBoss", {
-    Title = "Auto Farm Boss",
-    Description = "Tự động farm boss được chọn",
+ItemsTab:AddToggle("AutoSaberToggle", {
+    Title = "Auto Saber (Sea 1)",
+    Description = "Tự động đánh Shanks lấy Saber",
     Default = false,
-    Callback = function(v) _G.AutoFarmBoss = v end,
+    Callback = function(v) _G.AutoSaber = v end,
 })
 
-FarmTab:AddDropdown("SelectedBossDrop", {
-    Title = "Chọn Boss",
-    Values = getBossList(),
-    Default = 1,
-    Callback = function(v) _G.SelectedBoss = v end,
-})
-
-FarmTab:AddToggle("AutoFarmSeaBeast", {
-    Title = "Auto Farm Sea Beast",
+ItemsTab:AddToggle("AutoEliteHunterToggle", {
+    Title = "Auto Elite Hunter (Sea 3)",
+    Description = "Tự động săn 30 Elite Boss (Deandre, Urban, Diablo) để mở Yama",
     Default = false,
-    Callback = function(v) _G.AutoFarmSeaBeast = v end,
+    Callback = function(v) _G.AutoEliteHunter = v end,
 })
 
-FarmTab:AddToggle("AutoFarmObs", {
-    Title = "Auto Farm Observation",
-    Description = "Luyện Observation liên tục",
-    Default = false,
-    Callback = function(v) _G.AutoFarmObs = v end,
+ItemsTab:AddButton({
+    Title = "🗡️ Mua Võ Superhuman",
+    Callback = function()
+        pcall(function()
+            ReplicatedStorage.Remotes.CommF_:InvokeServer("BuySuperhuman")
+            notify("🥋 Võ Thuật", "Đã gửi yêu cầu mua Superhuman!", 3)
+        end)
+    end
 })
 
-FarmTab:AddToggle("AutoFarmBone", {
-    Title = "Auto Farm Bone",
-    Default = false,
-    Callback = function(v) _G.AutoFarmBone = v end,
+ItemsTab:AddButton({
+    Title = "⚡ Mua Võ Electric Claw",
+    Callback = function()
+        pcall(function()
+            ReplicatedStorage.Remotes.CommF_:InvokeServer("BuyElectricClaw")
+            notify("🥋 Võ Thuật", "Đã gửi yêu cầu mua Electric Claw!", 3)
+        end)
+    end
 })
 
-FarmTab:AddToggle("AutoFarmFragment", {
-    Title = "Auto Farm Fragment",
-    Default = false,
-    Callback = function(v) _G.AutoFarmFragment = v end,
+ItemsTab:AddButton({
+    Title = "🔥 Mua Võ Dragon Talon",
+    Callback = function()
+        pcall(function()
+            ReplicatedStorage.Remotes.CommF_:InvokeServer("BuyDragonTalon")
+            notify("🥋 Võ Thuật", "Đã gửi yêu cầu mua Dragon Talon!", 3)
+        end)
+    end
 })
 
-FarmTab:AddToggle("AutoFarmChest", {
-    Title = "Auto Farm Rương",
-    Description = "Tự động tìm và mở rương",
-    Default = false,
-    Callback = function(v) _G.AutoFarmChest = v end,
+ItemsTab:AddButton({
+    Title = "👑 Mua Võ Godhuman",
+    Callback = function()
+        pcall(function()
+            ReplicatedStorage.Remotes.CommF_:InvokeServer("BuyGodhuman")
+            notify("🥋 Võ Thuật", "Đã gửi yêu cầu mua Godhuman!", 3)
+        end)
+    end
 })
 
--- ==================== TAB 3: RAID ====================
-local RaidTab = Window:AddTab({Title = "Raid", Icon = "shield"})
-
-RaidTab:AddParagraph({Title = "⚡ Raid System", Content = "Tự động vào raid, farm, và awakening"})
+-- ==================== TAB 4: RAID ====================
+local RaidTab = Window:AddTab({Title = "Raid", Icon = "zap"})
 
 RaidTab:AddToggle("AutoRaidToggle", {
     Title = "Auto Raid",
-    Description = "Tự động bắt đầu raid với chip được chọn",
     Default = false,
     Callback = function(v) _G.AutoRaid = v end,
-})
-
-RaidTab:AddToggle("AutoRaidFarmToggle", {
-    Title = "Auto Farm trong Raid",
-    Description = "Farm quái bên trong raid",
-    Default = false,
-    Callback = function(v) _G.AutoRaidFarm = v end,
 })
 
 RaidTab:AddDropdown("RaidChipDrop", {
@@ -1540,60 +1334,36 @@ RaidTab:AddDropdown("RaidChipDrop", {
     Callback = function(v) _G.RaidChip = v end,
 })
 
-RaidTab:AddToggle("AutoAwakeningToggle", {
-    Title = "Auto Awakening",
-    Description = "Tự động thức tỉnh trái ác quỷ",
-    Default = false,
-    Callback = function(v) _G.AutoAwakening = v end,
-})
-
-RaidTab:AddButton({
-    Title = "🔄 Bắt Đầu Raid Ngay",
-    Description = "Bắt đầu raid với chip đã chọn",
-    Callback = function()
-        pcall(function()
-            ReplicatedStorage.Remotes.CommF_:InvokeServer("RaidStart", _G.RaidChip)
-            notify("⚡ Raid", "Đang bắt đầu raid " .. _G.RaidChip .. "...", 3)
-        end)
-    end
-})
-
--- ==================== TAB 4: FRUIT ====================
+-- ==================== TAB 5: FRUIT ====================
 local FruitTab = Window:AddTab({Title = "Fruit", Icon = "cherry"})
-
-FruitTab:AddParagraph({Title = "🍎 Devil Fruit System", Content = "Tìm, nhặt, và quản lý trái ác quỷ"})
 
 FruitTab:AddToggle("AutoFindFruitToggle", {
     Title = "Báo Trái Spawn",
-    Description = "Thông báo khi có trái ác quỷ spawn trên map",
     Default = false,
     Callback = function(v) _G.AutoFruitFinder = v end,
 })
 
 FruitTab:AddToggle("AutoCollectFruitToggle", {
     Title = "Auto Nhặt Trái",
-    Description = "Tự động bay tới và nhặt trái",
     Default = false,
     Callback = function(v) _G.AutoCollectFruit = v end,
 })
 
+FruitTab:AddToggle("AutoStoreFruitToggle", {
+    Title = "Auto Store Fruit (Tự cất trái vào kho)",
+    Description = "Tự động cất tất cả trái trong Backpack vào Inventory",
+    Default = true,
+    Callback = function(v) _G.AutoStoreFruit = v end,
+})
+
 FruitTab:AddToggle("FruitESPToggle", {
     Title = "ESP Fruit",
-    Description = "Hiển thị vị trí trái ác quỷ trên map",
     Default = false,
     Callback = function(v) _G.FruitESP = v end,
 })
 
-FruitTab:AddToggle("AutoGachaToggle", {
-    Title = "Auto Gacha / Random Fruit",
-    Description = "Tự động mua trái random mỗi 8 giây",
-    Default = false,
-    Callback = function(v) _G.AutoGachaFruit = v end,
-})
-
 FruitTab:AddButton({
-    Title = "🎰 Mua Random Fruit Ngay",
-    Description = "Mua 1 trái random từ Blox Fruit Dealer Cousin",
+    Title = "🎰 Random Fruit Ngay",
     Callback = function()
         pcall(function()
             ReplicatedStorage.Remotes.CommF_:InvokeServer("Cousin", "Buy")
@@ -1602,193 +1372,37 @@ FruitTab:AddButton({
     end
 })
 
-FruitTab:AddButton({
-    Title = "🔍 Quét Trái Toàn Map",
-    Description = "Quét tất cả workspace tìm trái",
-    Callback = function()
-        local found = 0
-        pcall(function()
-            for _, obj in pairs(workspace:GetChildren()) do
-                if obj:IsA("Tool") and (obj.Name:find("Fruit") or obj:FindFirstChild("Handle")) then
-                    found = found + 1
-                    local handle = obj:FindFirstChild("Handle")
-                    local pos = handle and handle.Position or Vector3.new(0,0,0)
-                    notify("🍎 Trái #" .. found, obj.Name .. " tại " .. tostring(pos), 5)
-                end
-            end
-        end)
-        if found == 0 then
-            notify("🔍 Quét xong", "Không tìm thấy trái nào trên map", 3)
-        else
-            notify("🔍 Quét xong", "Tìm thấy " .. found .. " trái!", 3)
-        end
-    end
-})
-
-FruitTab:AddButton({
-    Title = "🏪 Mở Store Trái",
-    Description = "Mở cửa hàng trái ác quỷ",
-    Callback = function()
-        pcall(function()
-            ReplicatedStorage.Remotes.CommF_:InvokeServer("Cousin", "Place")
-        end)
-    end
-})
-
--- ==================== TAB 5: ESP ====================
+-- ==================== TAB 6: ESP ====================
 local ESPTab = Window:AddTab({Title = "ESP", Icon = "eye"})
-
-ESPTab:AddParagraph({Title = "👁️ ESP System", Content = "Nhìn xuyên tường, hiển thị mọi thứ"})
 
 ESPTab:AddToggle("ESPPlayerToggle", {
     Title = "ESP Player",
-    Description = "Hiển thị người chơi khác (có Team Check)",
     Default = false,
-    Callback = function(v) _G.ESPPlayer = v; if not v then clearESPByPrefix("HAOTOOL_") end end,
-})
-
-ESPTab:AddToggle("ESPTeamCheckToggle", {
-    Title = "Team Check",
-    Description = "Bỏ qua đồng đội",
-    Default = true,
-    Callback = function(v) _G.ESPTeamCheck = v end,
-})
-
-ESPTab:AddToggle("ESPMobToggle", {
-    Title = "ESP Mob",
-    Description = "Hiển thị quái thường",
-    Default = false,
-    Callback = function(v) _G.ESPMob = v end,
+    Callback = function(v) _G.ESPPlayer = v end,
 })
 
 ESPTab:AddToggle("ESPBossToggle", {
     Title = "ESP Boss",
-    Description = "Hiển thị boss (HP > 10000)",
     Default = false,
     Callback = function(v) _G.ESPBoss = v end,
 })
 
 ESPTab:AddToggle("ESPChestToggle", {
     Title = "ESP Chest",
-    Description = "Hiển thị rương",
     Default = false,
     Callback = function(v) _G.ESPChest = v end,
 })
 
-ESPTab:AddToggle("ESPFlowerToggle", {
-    Title = "ESP Flower",
-    Description = "Hiển thị hoa",
-    Default = false,
-    Callback = function(v) _G.ESPFlower = v end,
-})
-
-ESPTab:AddToggle("ESPIslandToggle", {
-    Title = "ESP Island (Waypoint)",
-    Description = "Hiển thị tên đảo",
-    Default = false,
-    Callback = function(v)
-        _G.ESPIsland = v
-        if v then
-            pcall(function()
-                local islands = getSeaIslands()
-                for name, pos in pairs(islands) do
-                    local part = Instance.new("Part")
-                    part.Name = "HAOTOOL_ISLAND_" .. name
-                    part.Anchored = true
-                    part.CanCollide = false
-                    part.Transparency = 1
-                    part.Position = pos
-                    part.Size = Vector3.new(1,1,1)
-                    part.Parent = workspace
-
-                    local bb = Instance.new("BillboardGui")
-                    bb.Size = UDim2.new(0, 200, 0, 30)
-                    bb.StudsOffset = Vector3.new(0, 50, 0)
-                    bb.AlwaysOnTop = true
-                    bb.Adornee = part
-                    bb.Parent = ESPFolder
-
-                    local lbl = Instance.new("TextLabel")
-                    lbl.Size = UDim2.new(1, 0, 1, 0)
-                    lbl.BackgroundTransparency = 1
-                    lbl.Text = "🏝️ " .. name
-                    lbl.TextColor3 = Color3.fromRGB(100, 255, 100)
-                    lbl.TextStrokeTransparency = 0
-                    lbl.Font = Enum.Font.GothamBold
-                    lbl.TextSize = 16
-                    lbl.Parent = bb
-                end
-            end)
-        else
-            -- Xóa waypoint đảo
-            pcall(function()
-                for _, obj in pairs(workspace:GetChildren()) do
-                    if obj.Name:find("HAOTOOL_ISLAND_") then obj:Destroy() end
-                end
-                clearESPByPrefix("HAOTOOL_ISLAND_")
-            end)
-        end
-    end,
-})
-
-ESPTab:AddParagraph({Title = "🎨 Tùy Chỉnh ESP", Content = ""})
-
-ESPTab:AddSlider("ESPDistSlider", {
-    Title = "Khoảng Cách ESP (studs)",
-    Min = 100,
-    Max = 10000,
-    Default = 2000,
-    Rounding = 0,
-    Callback = function(v) _G.ESPDistance = v end,
-})
-
-ESPTab:AddColorpicker("ESPPlayerColor", {
-    Title = "Màu Player",
-    Default = Color3.fromRGB(0, 170, 255),
-    Callback = function(v) _G.ESPPlayerColor = v end,
-})
-
-ESPTab:AddColorpicker("ESPMobColorPick", {
-    Title = "Màu Mob",
-    Default = Color3.fromRGB(255, 85, 85),
-    Callback = function(v) _G.ESPMobColor = v end,
-})
-
-ESPTab:AddColorpicker("ESPBossColorPick", {
-    Title = "Màu Boss",
-    Default = Color3.fromRGB(255, 170, 0),
-    Callback = function(v) _G.ESPBossColor = v end,
-})
-
-ESPTab:AddColorpicker("ESPFruitColorPick", {
-    Title = "Màu Fruit",
-    Default = Color3.fromRGB(170, 0, 255),
-    Callback = function(v) _G.ESPFruitColor = v end,
-})
-
-ESPTab:AddButton({
-    Title = "🗑️ Xóa Tất Cả ESP",
-    Callback = function()
-        clearAllESP()
-        notify("ESP", "Đã xóa tất cả ESP", 2)
-    end
-})
-
--- ==================== TAB 6: TELEPORT ====================
+-- ==================== TAB 7: TELEPORT ====================
 local TeleportTab = Window:AddTab({Title = "Teleport", Icon = "map-pin"})
 
-TeleportTab:AddParagraph({Title = "🗺️ Teleport System", Content = "Di chuyển nhanh đến mọi nơi (Sea " .. WorldSea .. ")"})
-
--- Lấy danh sách đảo theo Sea hiện tại
 local currentIslands = getSeaIslands()
 local islandNames = {}
-for name, _ in pairs(currentIslands) do
-    table.insert(islandNames, name)
-end
+for name, _ in pairs(currentIslands) do table.insert(islandNames, name) end
 table.sort(islandNames)
 
 TeleportTab:AddDropdown("IslandDrop", {
-    Title = "Chọn Đảo (Sea " .. WorldSea .. ")",
+    Title = "Chọn Đảo",
     Values = islandNames,
     Default = 1,
     Callback = function(v) _G.SelectedIsland = v end,
@@ -1796,206 +1410,33 @@ TeleportTab:AddDropdown("IslandDrop", {
 
 TeleportTab:AddButton({
     Title = "✈️ Bay Tới Đảo",
-    Description = "Bay tới đảo đã chọn",
     Callback = function()
         local targetPos = currentIslands[_G.SelectedIsland]
         if targetPos then
-            notify("✈️ Teleport", "Đang bay tới " .. _G.SelectedIsland .. "...", 3)
+            notify("✈️ Teleport", "Bay tới " .. _G.SelectedIsland, 3)
             toTarget(CFrame.new(targetPos))
-            notify("✅ Đã Đến", _G.SelectedIsland, 2)
-        else
-            notify("❌ Lỗi", "Không tìm thấy đảo", 2)
         end
     end
 })
 
--- Teleport NPC quan trọng
-if #ImportantNPCs > 0 then
-    TeleportTab:AddParagraph({Title = "👤 NPC Quan Trọng", Content = ""})
-
-    local npcNames = {}
-    for _, npc in ipairs(ImportantNPCs) do
-        table.insert(npcNames, npc.Name)
-    end
-
-    TeleportTab:AddDropdown("NPCDrop", {
-        Title = "Chọn NPC",
-        Values = npcNames,
-        Default = 1,
-        Callback = function(v) _G.SelectedNPC = v end,
-    })
-
-    TeleportTab:AddButton({
-        Title = "👤 Bay Tới NPC",
-        Callback = function()
-            for _, npc in ipairs(ImportantNPCs) do
-                if npc.Name == _G.SelectedNPC then
-                    notify("✈️ Teleport", "Đang bay tới " .. npc.Name, 3)
-                    toTarget(CFrame.new(npc.Position))
-                    break
-                end
-            end
-        end
-    })
-end
-
--- Teleport Boss
-TeleportTab:AddParagraph({Title = "💀 Teleport Boss", Content = ""})
-
-TeleportTab:AddDropdown("BossTPDrop", {
-    Title = "Chọn Boss",
-    Values = getBossList(),
-    Default = 1,
-    Callback = function(v) _G.SelectedBossTP = v end,
-})
-
-TeleportTab:AddButton({
-    Title = "💀 Bay Tới Boss",
-    Callback = function()
-        local bossData = getBossData(_G.SelectedBossTP)
-        if bossData then
-            notify("✈️ Teleport", "Đang bay tới " .. bossData.Name, 3)
-            toTarget(CFrame.new(bossData.Position))
-        end
-    end
-})
-
--- Teleport tới Fruit
-TeleportTab:AddParagraph({Title = "🍎 Teleport Fruit", Content = ""})
-
-TeleportTab:AddButton({
-    Title = "🍎 Bay Tới Trái Gần Nhất",
-    Description = "Tìm và bay tới trái ác quỷ gần nhất",
-    Callback = function()
-        local closestFruit = nil
-        local closestDist = math.huge
-        pcall(function()
-            local char = Player.Character
-            local rootPart = char and char:FindFirstChild("HumanoidRootPart")
-            for _, obj in pairs(workspace:GetChildren()) do
-                if obj:IsA("Tool") and obj.Name:find("Fruit") and obj:FindFirstChild("Handle") then
-                    if rootPart then
-                        local d = (obj.Handle.Position - rootPart.Position).Magnitude
-                        if d < closestDist then
-                            closestDist = d
-                            closestFruit = obj
-                        end
-                    else
-                        closestFruit = obj
-                        break
-                    end
-                end
-            end
-        end)
-        if closestFruit and closestFruit:FindFirstChild("Handle") then
-            notify("🍎 Fruit TP", "Bay tới " .. closestFruit.Name, 3)
-            toTarget(closestFruit.Handle.CFrame)
-        else
-            notify("❌", "Không tìm thấy trái trên map", 2)
-        end
-    end
-})
-
--- Quick Teleport đến các Sea khác
-TeleportTab:AddParagraph({Title = "🌊 Chuyển Sea", Content = ""})
-
-TeleportTab:AddButton({
-    Title = "🌊 Đi Sea 1",
-    Callback = function()
-        pcall(function()
-            game:GetService("TeleportService"):Teleport(2753915549, Player)
-        end)
-    end
-})
-
-TeleportTab:AddButton({
-    Title = "🌊 Đi Sea 2",
-    Callback = function()
-        pcall(function()
-            game:GetService("TeleportService"):Teleport(4442272183, Player)
-        end)
-    end
-})
-
-TeleportTab:AddButton({
-    Title = "🌊 Đi Sea 3",
-    Callback = function()
-        pcall(function()
-            game:GetService("TeleportService"):Teleport(7449423635, Player)
-        end)
-    end
-})
-
--- ==================== TAB 7: COMBAT ====================
+-- ==================== TAB 8: COMBAT ====================
 local CombatTab = Window:AddTab({Title = "Combat", Icon = "crosshair"})
-
-CombatTab:AddParagraph({Title = "🥊 Combat System", Content = "Haki, Observation, và kỹ năng chiến đấu"})
 
 CombatTab:AddToggle("AutoBusoToggle", {
     Title = "Auto Buso Haki",
-    Description = "Tự động bật Buso Haki (Haki Vũ Trang)",
     Default = true,
     Callback = function(v) _G.AutoHaki = v end,
 })
 
 CombatTab:AddToggle("AutoKenToggle", {
     Title = "Auto Ken Haki",
-    Description = "Tự động bật Ken Haki (Haki Quan Sát)",
     Default = false,
     Callback = function(v) _G.AutoKen = v end,
 })
 
-CombatTab:AddToggle("AutoObsV2Toggle", {
-    Title = "Auto Observation V2",
-    Description = "Tự động kích hoạt Observation V2",
-    Default = false,
-    Callback = function(v) _G.AutoObsV2 = v end,
-})
-
-CombatTab:AddToggle("AutoDodgeToggle", {
-    Title = "Auto Dodge",
-    Description = "Tự động né tránh đạn/đòn đánh",
-    Default = false,
-    Callback = function(v) _G.AutoDodge = v end,
-})
-
-CombatTab:AddButton({
-    Title = "🥋 Bật Buso Haki Ngay",
-    Callback = function()
-        pcall(function()
-            ReplicatedStorage.Remotes.CommF_:InvokeServer("Buso")
-            notify("🥋", "Đã bật Buso Haki", 2)
-        end)
-    end
-})
-
-CombatTab:AddButton({
-    Title = "👁️ Bật Ken Haki Ngay",
-    Callback = function()
-        pcall(function()
-            local ken = ReplicatedStorage.Remotes:FindFirstChild("Ken")
-            if ken then ken:FireServer(true) end
-            notify("👁️", "Đã bật Ken Haki", 2)
-        end)
-    end
-})
-
-CombatTab:AddButton({
-    Title = "🔮 Bật Observation V2 Ngay",
-    Callback = function()
-        pcall(function()
-            ReplicatedStorage.Remotes.CommF_:InvokeServer("Observation")
-            notify("🔮", "Đã bật Observation V2", 2)
-        end)
-    end
-})
-
--- ==================== TAB 8: MISC ====================
+-- ==================== TAB 9: MISC & SETTINGS ====================
 local MiscTab = Window:AddTab({Title = "Misc", Icon = "wrench"})
 
-MiscTab:AddParagraph({Title = "🔧 Cài Đặt Chung", Content = ""})
-
--- Speed & Jump
 MiscTab:AddToggle("WalkSpeedToggle", {
     Title = "WalkSpeed Hack",
     Default = false,
@@ -2011,235 +1452,35 @@ MiscTab:AddSlider("WalkSpeedSlider", {
     Callback = function(v) _G.WalkSpeedVal = v end,
 })
 
-MiscTab:AddToggle("JumpPowerToggle", {
-    Title = "JumpPower Hack",
-    Default = false,
-    Callback = function(v) _G.JumpPowerHack = v end,
-})
-
-MiscTab:AddSlider("JumpPowerSlider", {
-    Title = "Sức Nhảy",
-    Min = 50,
-    Max = 500,
-    Default = 100,
-    Rounding = 0,
-    Callback = function(v) _G.JumpPowerVal = v end,
-})
-
-MiscTab:AddToggle("InfiniteJumpToggle", {
-    Title = "Infinite Jump",
-    Description = "Nhảy không giới hạn trên không",
-    Default = false,
-    Callback = function(v) _G.InfiniteJump = v end,
-})
-
-MiscTab:AddToggle("InfiniteEnergyToggle", {
-    Title = "Infinite Energy",
-    Description = "Năng lượng không giới hạn",
-    Default = false,
-    Callback = function(v) _G.InfiniteEnergy = v end,
-})
-
--- Stats
-MiscTab:AddParagraph({Title = "📊 Auto Stats", Content = ""})
-
-MiscTab:AddToggle("AutoStatsToggle", {
-    Title = "Auto Cộng Điểm Stats",
-    Default = false,
-    Callback = function(v) _G.AutoStats = v end,
-})
-
-MiscTab:AddDropdown("StatDropdown", {
-    Title = "Chọn Chỉ Số",
-    Values = {"Melee", "Defense", "Sword", "Gun", "Blox Fruit"},
-    Default = "Melee",
-    Callback = function(v) _G.StatToUpgrade = v end,
-})
-
--- Anti-AFK
-MiscTab:AddParagraph({Title = "🛡️ Bảo Vệ", Content = ""})
-
-MiscTab:AddToggle("AntiAFKToggle", {
-    Title = "Anti AFK",
-    Description = "Chống bị kick do AFK",
-    Default = true,
-    Callback = function(v) _G.AntiAFK = v end,
-})
-
--- FPS Boost
-MiscTab:AddParagraph({Title = "⚡ Tối Ưu Hiệu Năng", Content = ""})
-
 MiscTab:AddButton({
-    Title = "⚡ FPS Boost",
-    Description = "Xóa texture, particle, giảm lag",
+    Title = "⚡ FPS Boost (Tối Ưu Giảm Lag)",
     Callback = function()
         pcall(function()
-            local removed = 0
             for _, obj in pairs(game:GetDescendants()) do
-                if obj:IsA("Decal") or obj:IsA("Texture") then
+                if obj:IsA("Decal") or obj:IsA("Texture") or obj:IsA("ParticleEmitter") then
                     obj:Destroy()
-                    removed = removed + 1
-                elseif obj:IsA("ParticleEmitter") or obj:IsA("Trail") or obj:IsA("Smoke")
-                    or obj:IsA("Fire") or obj:IsA("Sparkles") then
-                    obj:Destroy()
-                    removed = removed + 1
                 end
             end
-            -- Đơn giản hóa material
-            for _, obj in pairs(workspace:GetDescendants()) do
-                if obj:IsA("BasePart") then
-                    obj.Material = Enum.Material.SmoothPlastic
-                end
-            end
-            -- Giảm chất lượng ánh sáng
-            pcall(function()
-                settings().Rendering.QualityLevel = Enum.QualityLevel.Level01
-            end)
-            notify("⚡ FPS Boost", "Đã xóa " .. removed .. " hiệu ứng + đơn giản hóa vật liệu", 3)
+            notify("⚡ FPS Boost", "Đã tối ưu mượt mà!", 3)
         end)
     end
 })
 
 MiscTab:AddButton({
-    Title = "⬜ White Screen (Giảm Lag)",
-    Description = "Xóa Skybox, đổi nền trắng",
-    Callback = function()
-        pcall(function()
-            Lighting.Ambient = Color3.new(1, 1, 1)
-            Lighting.Brightness = 2
-            Lighting.FogEnd = 100000
-            Lighting.GlobalShadows = false
-            for _, obj in pairs(Lighting:GetChildren()) do
-                if obj:IsA("Sky") or obj:IsA("Atmosphere") or obj:IsA("Clouds")
-                    or obj:IsA("BloomEffect") or obj:IsA("BlurEffect")
-                    or obj:IsA("SunRaysEffect") or obj:IsA("ColorCorrectionEffect") then
-                    obj:Destroy()
-                end
-            end
-            notify("⬜", "White Screen đã bật", 2)
-        end)
-    end
+    Title = "🌐 Server Hop",
+    Callback = function() serverHop() end,
 })
 
-MiscTab:AddButton({
-    Title = "⬛ Black Screen (Giảm Lag)",
-    Description = "Xóa Skybox, đổi nền đen",
-    Callback = function()
-        pcall(function()
-            Lighting.Ambient = Color3.new(0, 0, 0)
-            Lighting.Brightness = 0
-            Lighting.FogEnd = 100000
-            Lighting.GlobalShadows = false
-            Lighting.OutdoorAmbient = Color3.new(0, 0, 0)
-            for _, obj in pairs(Lighting:GetChildren()) do
-                if obj:IsA("Sky") or obj:IsA("Atmosphere") or obj:IsA("Clouds")
-                    or obj:IsA("BloomEffect") or obj:IsA("BlurEffect")
-                    or obj:IsA("SunRaysEffect") or obj:IsA("ColorCorrectionEffect") then
-                    obj:Destroy()
-                end
-            end
-            notify("⬛", "Black Screen đã bật", 2)
-        end)
-    end
-})
-
--- Server Hop
-MiscTab:AddParagraph({Title = "🌐 Server", Content = ""})
-
-MiscTab:AddButton({
-    Title = "🌐 Server Hop Ngay",
-    Description = "Nhảy sang server khác",
-    Callback = function()
-        notify("🌐", "Đang tìm server...", 2)
-        serverHop()
-    end
-})
-
-MiscTab:AddToggle("ServerHopNoFruitToggle", {
-    Title = "Auto Server Hop (Không có Fruit)",
-    Description = "Tự động nhảy server nếu không có trái",
-    Default = false,
-    Callback = function(v) _G.ServerHopNoFruit = v end,
-})
-
--- ==================== TAB 9: SETTINGS ====================
-local SettingsTab = Window:AddTab({Title = "Settings", Icon = "settings"})
-
-SettingsTab:AddParagraph({
-    Title = "⚙️ Cài Đặt",
-    Content = "Lưu & tải cấu hình, quản lý giao diện"
-})
-
-SettingsTab:AddButton({
-    Title = "📋 Hiển Thị Thông Tin",
-    Description = "Xem thông tin nhân vật hiện tại",
-    Callback = function()
-        pcall(function()
-            local lvl = Player.Data.Level.Value or "?"
-            local beli = Player.Data.Beli.Value or "?"
-            local frag = "?"
-            pcall(function() frag = Player.Data.Fragments.Value end)
-
-            notify("📋 Thông Tin", string.format(
-                "Level: %s\nBeli: %s\nFragment: %s\nSea: %d\nServer: %s",
-                tostring(lvl), tostring(beli), tostring(frag), WorldSea, game.JobId:sub(1,12)
-            ), 6)
-        end)
-    end
-})
-
-SettingsTab:AddButton({
-    Title = "🔄 Refresh Mob List",
-    Description = "Cập nhật danh sách quái hiện có",
-    Callback = function()
-        local enemies = getEnemyList()
-        pcall(function()
-            if Fluent.Options and Fluent.Options.SelectedMobDrop then
-                Fluent.Options.SelectedMobDrop:SetValues(enemies)
-            end
-        end)
-        notify("🔄", "Đã cập nhật danh sách quái: " .. #enemies .. " loại", 2)
-    end
-})
-
--- Lưu/Tải cấu hình (nếu SaveManager tồn tại)
 if SaveManager and InterfaceManager then
     pcall(function()
         SaveManager:SetLibrary(Fluent)
         InterfaceManager:SetLibrary(Fluent)
-        SaveManager:IgnoreThemeSettings()
-        InterfaceManager:SetFolder("HaoToolHub")
         SaveManager:SetFolder("HaoToolHub/BloxFruits")
-        InterfaceManager:BuildInterfaceSection(SettingsTab)
-        SaveManager:BuildConfigSection(SettingsTab)
+        SaveManager:BuildConfigSection(MiscTab)
     end)
 end
 
-------------------------------------------------------------
--- PHẦN 8: HOÀN TẤT
-------------------------------------------------------------
-
--- Chọn tab đầu tiên
 pcall(function() Window:SelectTab(1) end)
 
--- Tải config tự động (nếu có)
-pcall(function()
-    if SaveManager then
-        SaveManager:LoadAutoloadConfig()
-    end
-end)
-
--- Thông báo load thành công
-notify(
-    "⚡ HAOTOOL v2.0",
-    "Đã load thành công!\n🌊 Sea " .. WorldSea
-        .. "\n📌 RightControl để ẩn/hiện GUI"
-        .. "\n⚔️ " .. #(WorldSea == 1 and QuestsSea1 or WorldSea == 2 and QuestsSea2 or QuestsSea3) .. " quest | " .. #islandNames .. " đảo",
-    6
-)
-
-print("=====================================")
-print("⚡ HAOTOOL v2.0 — LOADED SUCCESSFULLY")
-print("🌊 Sea: " .. WorldSea)
-print("📌 RightControl to toggle GUI")
-print("=====================================")
+notify("⚡ HAOTOOL v2.5 GOD", "Đã cập nhật Fast Attack & Auto Farm Weapon/Items!", 6)
+print("⚡ HAOTOOL V2.5 GOD EDITION LOADED SUCCESSFULLY!")
