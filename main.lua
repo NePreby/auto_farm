@@ -1,6 +1,6 @@
 local HAOTOOL_SOURCE = [========[
 local RuntimeEnv = getgenv and getgenv() or _G
-local RequestedScriptVersion = "2.1.3"
+local RequestedScriptVersion = "2.1.4"
 if RuntimeEnv.HAOTOOL_RUNNING then
     -- Khi người dùng bấm EXECUTE lại trong Delta X: Xóa giao diện cũ và dựng lại giao diện mới 100%
     if type(RuntimeEnv.HAOTOOL_DESTROY_UI) == "function" then
@@ -22,7 +22,7 @@ RuntimeEnv.HAOTOOL_TAB_COUNT = 0
 
 --[[
     ================================================================================
-    ⚡ HAOTOOL | BLOX FRUITS V2.1.3 — STABLE EDITION
+    ⚡ HAOTOOL | BLOX FRUITS V2.1.4 — STABLE EDITION
     --------------------------------------------------------------------------------
     Developer   : HAOTOOL Team
     UI Library  : Fluent (Dark Theme)
@@ -551,6 +551,7 @@ local BossQuestsSea3 = {
     {MinLevel=2175, MaxLevel=2199, QuestName="IceCreamIslandQuest", QuestNumber=3, MobName="Cake Queen", QuestNpc=Vector3.new(-820.648,65.820,-10965.796), MobPosition=Vector3.new(-821.000,66.000,-10965.000)},
 }
 
+local findBoss
 local function getAvailableBossQuest(level)
     local bossTable
     if WorldSea == 1 then bossTable = BossQuestsSea1
@@ -1406,7 +1407,7 @@ local function findMob(mobName, useNearest)
 end
 
 -- ====== Tìm boss ======
-local function findBoss(bossName)
+findBoss = function(bossName)
     if not workspace:FindFirstChild("Enemies") then return nil end
     for _, mob in pairs(workspace.Enemies:GetChildren()) do
         if mobNameMatches(mob.Name, bossName)
@@ -2434,20 +2435,25 @@ local Window = Fluent:CreateWindow({
 
 -- ====== LOGO NỔI: LUÔN CÓ THỂ MỞ LẠI MENU ======
 local function setMainWindowVisible(visible)
-    pcall(function()
-        if Fluent and Fluent.GUI then
-            Fluent.GUI.Enabled = true
-        end
-        if Window then
-            if Window.Root then
-                Window.Root.Visible = visible
+    if Fluent and Fluent.GUI then
+        pcall(function() Fluent.GUI.Enabled = true end)
+    end
+    if not Window then return false end
+
+    local changed = false
+    if Window.Root then
+        local okVisible = pcall(function()
+            Window.Root.Visible = visible
+        end)
+        local okEnabled = pcall(function()
+            if Window.Root:IsA("ScreenGui") then
+                Window.Root.Enabled = visible
             end
-            Window.Minimized = not visible
-            if Window.Minimize then
-                pcall(function() Window:Minimize(not visible) end)
-            end
-        end
-    end)
+        end)
+        changed = okVisible or okEnabled
+    end
+    Window.Minimized = not visible
+    return changed
 end
 
 local function rebuildMainInterface()
@@ -2495,14 +2501,14 @@ local function rebuildMainInterface()
 end
 
 local function toggleMainWindow()
-    pcall(function()
-        if Window and Window.Root and Window.Root.Parent then
-            local isCurrentlyVisible = Window.Root.Visible and not Window.Minimized
-            setMainWindowVisible(not isCurrentlyVisible)
-        else
-            rebuildMainInterface()
-        end
-    end)
+    if Window and Window.Root and Window.Root.Parent then
+        local isCurrentlyVisible = false
+        pcall(function() isCurrentlyVisible = Window.Root.Visible == true end)
+        if Window.Minimized == true then isCurrentlyVisible = false end
+        setMainWindowVisible(not isCurrentlyVisible)
+    else
+        rebuildMainInterface()
+    end
 end
 
 RuntimeEnv.HAOTOOL_TOGGLE_MENU = toggleMainWindow
@@ -2604,8 +2610,13 @@ local function createLauncherButton()
         end
     end)
 
-    button.Activated:Connect(toggleMainWindow)
-    button.MouseButton1Click:Connect(toggleMainWindow)
+    local lastLauncherToggle = 0
+    button.Activated:Connect(function()
+        local now = os.clock()
+        if now - lastLauncherToggle < 0.25 then return end
+        lastLauncherToggle = now
+        toggleMainWindow()
+    end)
     return launcherGui
 end
 
@@ -3871,7 +3882,7 @@ notify(
 )
 
 print("=====================================")
-print("⚡ HAOTOOL v2.1.3 — LOADED SUCCESSFULLY")
+print("⚡ HAOTOOL v2.1.4 — LOADED SUCCESSFULLY")
 print("🌊 Sea: " .. WorldSea)
 print("📌 RightControl to toggle GUI")
 print("=====================================")
