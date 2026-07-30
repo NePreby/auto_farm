@@ -570,21 +570,24 @@ local lastEquipCheck = 0
 local lastPreparedTarget = nil
 local restoreFrozenMobs = function() end
 local userPointerActive = false
+local sendingVirtualAttack = false
+local manualPointerPauseUntil = 0
+
+local function isPointerInput(input)
+    return input.UserInputType == Enum.UserInputType.MouseButton1
+        or input.UserInputType == Enum.UserInputType.Touch
+end
 
 UserInputService.InputBegan:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseButton1
-        or input.UserInputType == Enum.UserInputType.Touch then
-        userPointerActive = true
-    end
+    if sendingVirtualAttack or not isPointerInput(input) then return end
+    userPointerActive = true
 end)
 
 UserInputService.InputEnded:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseButton1
-        or input.UserInputType == Enum.UserInputType.Touch then
-        userPointerActive = false
-    end
+    if sendingVirtualAttack or not isPointerInput(input) then return end
+    userPointerActive = false
+    manualPointerPauseUntil = os.clock() + 0.18
 end)
-
 
 local function clearFarmTarget()
     activeFarmTarget = nil
@@ -723,9 +726,12 @@ end
 
 -- Kích hoạt Tool trực tiếp để không chiếm chuột và vẫn bấm được giao diện.
 local function attack()
-    if userPointerActive or UserInputService:GetFocusedTextBox() then return end
-
     local now = os.clock()
+    if userPointerActive or now < manualPointerPauseUntil
+        or UserInputService:GetFocusedTextBox() then
+        return
+    end
+
     local delay = math.clamp(tonumber(_G.AttackDelay) or 0.05, 0.01, 0.50)
     if _G.SafetyMode then
         delay = math.max(delay, 0.05)
@@ -740,12 +746,22 @@ local function attack()
     if not tool then return end
 
     pcall(function() tool:Activate() end)
+
+    pcall(function()
+        sendingVirtualAttack = true
+        local input = game:GetService("VirtualInputManager")
+        input:SendMouseButtonEvent(0, 0, 0, true, game, 0)
+        task.wait(0.015)
+        input:SendMouseButtonEvent(0, 0, 0, false, game, 0)
+    end)
+    sendingVirtualAttack = false
 end
 -- ====== Auto Skill (dùng Z, X, C, V) ======
 local lastSkillTime = 0
 local function useSkills()
     if not _G.AutoSkill then return end
-    if userPointerActive or UserInputService:GetFocusedTextBox() then return end
+    if userPointerActive or os.clock() < manualPointerPauseUntil
+        or UserInputService:GetFocusedTextBox() then return end
     if tick() - lastSkillTime < _G.SkillCooldown then return end
 
     pcall(function()
@@ -806,7 +822,6 @@ local function mobNameMatches(actualName, wantedName)
     local wanted = string.lower(tostring(wantedName))
 
     if actual == wanted then return true end
-    if string.find(actual, wanted, 1, true) then return true end
 
     actual = actual:gsub("%s*%[lv%.?%s*%d+%]%s*", "")
     actual = actual:gsub("%s*%[boss%]%s*", "")
@@ -818,7 +833,7 @@ local function mobNameMatches(actualName, wantedName)
     wanted = wanted:gsub("^the%s+", "")
     wanted = wanted:gsub("%s+$", "")
 
-    return actual == wanted or string.find(actual, wanted, 1, true) ~= nil
+    return actual == wanted
 end
 
 
@@ -1829,12 +1844,22 @@ local Window = Fluent:CreateWindow({
 })
 
 -- ====== LOGO NỔI: LUÔN CÓ THỂ MỞ LẠI MENU ======
-local function toggleMainWindow()
+local function setMainWindowVisible(visible)
     pcall(function()
+        if Fluent and Fluent.GUI then
+            Fluent.GUI.Enabled = true
+        end
         if Window and Window.Root and Window.Root.Parent then
-            Window:Minimize()
+            Window.Root.Visible = visible
+            Window.Minimized = not visible
         end
     end)
+end
+
+local function toggleMainWindow()
+    if Window and Window.Root and Window.Root.Parent then
+        setMainWindowVisible(not Window.Root.Visible)
+    end
 end
 
 RuntimeEnv.HAOTOOL_TOGGLE_MENU = toggleMainWindow
@@ -1897,21 +1922,31 @@ end
 
 local LauncherGui = createLauncherButton()
 
--- Nút X chỉ thu nhỏ; không hủy tool và các vòng farm đang chạy.
+-- Nút X an toàn phủ lên nút hủy mặc định của Fluent.
 pcall(function()
-    local oldClose = Window.TitleBar.CloseButton.Frame
-    local minimizeClose = oldClose:Clone()
-    minimizeClose.Name = "MinimizeCloseButton"
-    oldClose:Destroy()
-    minimizeClose.Parent = Window.TitleBar.Frame
-    Window.TitleBar.CloseButton.Frame = minimizeClose
-    minimizeClose.Activated:Connect(function()
-        if not Window.Minimized then
-            Window:Minimize()
-        end
+    if Window.TitleBar and Window.TitleBar.CloseButton
+        and Window.TitleBar.CloseButton.Frame then
+        Window.TitleBar.CloseButton.Frame.Visible = false
+    end
+
+    local safeClose = Instance.new("TextButton")
+    safeClose.Name = "SafeMinimizeButton"
+    safeClose.Size = UDim2.fromOffset(34, 34)
+    safeClose.AnchorPoint = Vector2.new(1, 0)
+    safeClose.Position = UDim2.new(1, -4, 0, 4)
+    safeClose.BackgroundTransparency = 1
+    safeClose.BorderSizePixel = 0
+    safeClose.Text = "×"
+    safeClose.TextColor3 = Color3.fromRGB(230, 224, 255)
+    safeClose.TextSize = 24
+    safeClose.Font = Enum.Font.Gotham
+    safeClose.Active = true
+    safeClose.ZIndex = 10000
+    safeClose.Parent = Window.Root
+    safeClose.Activated:Connect(function()
+        setMainWindowVisible(false)
     end)
 end)
-
 
 -- ==================== TAB 1: MAIN ====================
 -- Tên tab ngắn, đồng nhất và ưu tiên tiếng Việt để dễ quét nhanh.
