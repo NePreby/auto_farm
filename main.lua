@@ -1,6 +1,6 @@
 local HAOTOOL_SOURCE = [========[
 local RuntimeEnv = getgenv and getgenv() or _G
-local RequestedScriptVersion = "2.2.4"
+local RequestedScriptVersion = "2.2.5"
 if RuntimeEnv.HAOTOOL_RUNNING then
     -- Khi người dùng bấm EXECUTE lại trong Delta X: Xóa giao diện cũ và dựng lại giao diện mới 100%
     if type(RuntimeEnv.HAOTOOL_DESTROY_UI) == "function" then
@@ -22,7 +22,7 @@ RuntimeEnv.HAOTOOL_TAB_COUNT = 0
 
 --[[
     ================================================================================
-    ⚡ HAOTOOL | BLOX FRUITS V2.2.4 — STABLE EDITION
+    ⚡ HAOTOOL | BLOX FRUITS V2.2.5 — STABLE EDITION
     --------------------------------------------------------------------------------
     Developer   : HAOTOOL Team
     UI Library  : Fluent (Dark Theme)
@@ -314,6 +314,11 @@ if type(teleportState) == "table" then
     for key, value in pairs(teleportState) do
         _G[key] = value
     end
+end
+
+-- Level và Mastery dùng chung quyền di chuyển; không cho hai vòng farm tranh nhau.
+if _G.AutoFarmLevel and _G.AutoFarmMastery then
+    _G.AutoFarmMastery = false
 end
 
 local TELEPORT_STATE_KEYS = {
@@ -1232,7 +1237,8 @@ local function attack()
     end
 
     -- VirtualUser gửi đòn đánh vào bộ điều khiển game, không click lên nút menu.
-    if not userPointerActive and now >= manualPointerPauseUntil
+    if RuntimeEnv.HAOTOOL_MENU_VISIBLE ~= true
+        and not userPointerActive and now >= manualPointerPauseUntil
         and not UserInputService:GetFocusedTextBox() then
         sendingVirtualAttack = true
         local virtualOk = pcall(function()
@@ -1246,8 +1252,7 @@ local function attack()
         if virtualOk then table.insert(methods, "VirtualUser") end
 
         -- Nếu chưa có damage, gửi click vào giữa màn hình nhưng chỉ khi menu đã đóng.
-        if noDamageFor >= 0.75
-            and (_G.BackgroundAttack == false or RuntimeEnv.HAOTOOL_MENU_VISIBLE ~= true) then
+        if noDamageFor >= 0.75 then
             sendingVirtualAttack = true
             local inputOk = pcall(function()
                 local camera = workspace.CurrentCamera
@@ -3180,6 +3185,15 @@ local FarmTab = UITabs.Farm
 runFeature("Giao diện Farm", function()
 
 local FarmCoreSection = FarmTab:AddSection("Nâng cấp & Mastery")
+local changingCoreFarmMode = false
+
+local function disableOtherCoreFarm(optionId, globalKey)
+    _G[globalKey] = false
+    local option = Fluent.Options and Fluent.Options[optionId]
+    if option and option.SetValue then
+        pcall(function() option:SetValue(false) end)
+    end
+end
 
 FarmCoreSection:AddToggle("AutoFarmLevel", {
     Title = "Auto Farm Level",
@@ -3187,6 +3201,11 @@ FarmCoreSection:AddToggle("AutoFarmLevel", {
     Default = _G.AutoFarmLevel,
     Callback = function(v)
         _G.AutoFarmLevel = v
+        if v and not changingCoreFarmMode then
+            changingCoreFarmMode = true
+            disableOtherCoreFarm("AutoFarmMastery", "AutoFarmMastery")
+            changingCoreFarmMode = false
+        end
         if v and hasActiveQuest() then
             abandonQuest()
             acceptedQuestSignature = nil
@@ -3204,6 +3223,11 @@ FarmCoreSection:AddToggle("AutoFarmMastery", {
     Default = _G.AutoFarmMastery,
     Callback = function(v)
         _G.AutoFarmMastery = v
+        if v and not changingCoreFarmMode then
+            changingCoreFarmMode = true
+            disableOtherCoreFarm("AutoFarmLevel", "AutoFarmLevel")
+            changingCoreFarmMode = false
+        end
         if not v and not _G.AutoFarmLevel and not _G.AutoFarmBoss
             and not _G.AutoFarmSeaBeast then
             stopFarmMovement()
@@ -4312,7 +4336,7 @@ notify(
 )
 
 print("=====================================")
-print("⚡ HAOTOOL v2.2.4 — LOADED SUCCESSFULLY")
+print("⚡ HAOTOOL v2.2.5 — LOADED SUCCESSFULLY")
 print("🌊 Sea: " .. WorldSea)
 print("📌 RightControl to toggle GUI")
 print("=====================================")
