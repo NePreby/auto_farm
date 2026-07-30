@@ -1,6 +1,6 @@
 local HAOTOOL_SOURCE = [========[
 local RuntimeEnv = getgenv and getgenv() or _G
-local RequestedScriptVersion = "2.2.1"
+local RequestedScriptVersion = "2.2.2"
 if RuntimeEnv.HAOTOOL_RUNNING then
     -- Khi người dùng bấm EXECUTE lại trong Delta X: Xóa giao diện cũ và dựng lại giao diện mới 100%
     if type(RuntimeEnv.HAOTOOL_DESTROY_UI) == "function" then
@@ -22,7 +22,7 @@ RuntimeEnv.HAOTOOL_TAB_COUNT = 0
 
 --[[
     ================================================================================
-    ⚡ HAOTOOL | BLOX FRUITS V2.2.1 — STABLE EDITION
+    ⚡ HAOTOOL | BLOX FRUITS V2.2.2 — STABLE EDITION
     --------------------------------------------------------------------------------
     Developer   : HAOTOOL Team
     UI Library  : Fluent (Dark Theme)
@@ -1655,10 +1655,10 @@ local function getBossList()
         local clean = normalizeMobName(name)
         if clean ~= "" and not known[clean] then
             known[clean] = true
-            local formatted = (clean:gsub("(%a)([%w']*)", function(a, b)
+            -- gsub trả về 2 giá trị; ngoặc ép còn 1 giá trị cho table.insert.
+            table.insert(bosses, (clean:gsub("(%a)([%w']*)", function(a, b)
                 return string.upper(a) .. b
-            end))
-            table.insert(bosses, formatted)
+            end)))
         end
     end
 
@@ -2975,8 +2975,8 @@ MainTab:AddParagraph({
 MainTab:AddParagraph({
     Title = "⚡  Xin chào, " .. Player.DisplayName,
     Content = "SEA  " .. WorldSea
-        .. "    •    LEVEL  " .. tostring(pcall(function() return Player.Data.Level.Value end) and Player.Data.Level.Value or "?")
-        .. "    •    BELI  " .. tostring(pcall(function() return Player.Data.Beli.Value end) and Player.Data.Beli.Value or "?")
+        .. "    •    LEVEL  " .. tostring(getPlayerLevel())
+        .. "    •    BELI  " .. tostring(getPlayerBeli())
         .. "\nServer  " .. game.JobId:sub(1, 8) .. "..."
         .. "\n\nRightControl hoặc nút H  •  Ẩn / hiện bảng điều khiển"
 })
@@ -4118,6 +4118,10 @@ if type(teleportState) == "table" and Fluent and Fluent.Options then
 end
 
 
+if Window and Window.SelectTab then
+    pcall(function() Window:SelectTab(1) end)
+end
+
 RuntimeEnv.HAOTOOL_UI_READY = createdTabCount == 9
 RuntimeEnv.HAOTOOL_LAST_FATAL_ERROR = nil
 
@@ -4134,7 +4138,7 @@ notify(
 )
 
 print("=====================================")
-print("⚡ HAOTOOL v2.2.1 — LOADED SUCCESSFULLY")
+print("⚡ HAOTOOL v2.2.2 — LOADED SUCCESSFULLY")
 print("🌊 Sea: " .. WorldSea)
 print("📌 RightControl to toggle GUI")
 print("=====================================")
