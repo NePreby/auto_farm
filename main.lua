@@ -1,6 +1,6 @@
 local HAOTOOL_SOURCE = [========[
 local RuntimeEnv = getgenv and getgenv() or _G
-local RequestedScriptVersion = "2.2.5"
+local RequestedScriptVersion = "2.2.6"
 if RuntimeEnv.HAOTOOL_RUNNING then
     -- Khi người dùng bấm EXECUTE lại trong Delta X: Xóa giao diện cũ và dựng lại giao diện mới 100%
     if type(RuntimeEnv.HAOTOOL_DESTROY_UI) == "function" then
@@ -22,7 +22,7 @@ RuntimeEnv.HAOTOOL_TAB_COUNT = 0
 
 --[[
     ================================================================================
-    ⚡ HAOTOOL | BLOX FRUITS V2.2.5 — STABLE EDITION
+    ⚡ HAOTOOL | BLOX FRUITS V2.2.6 — STABLE EDITION
     --------------------------------------------------------------------------------
     Developer   : HAOTOOL Team
     UI Library  : Fluent (Dark Theme)
@@ -817,6 +817,10 @@ local damageWatchTarget = nil
 local damageWatchHealth = nil
 local damageWatchStartedAt = 0
 local lastConfirmedDamageAt = 0
+local lastNetAttackTime = 0
+local manualMovementActive = false
+local manualMovementPauseUntil = 0
+local manualTravelSerial = 0
 local skillSequenceBusy = false
 local silentAnimator = nil
 local silentAnimationConnection = nil
@@ -831,6 +835,7 @@ local ACTION_ANIMATION_PRIORITIES = {
 
 -- Chỉ một chế độ được quyền di chuyển nhân vật tại một thời điểm.
 local function getActiveMovementMode()
+    if manualMovementActive or os.clock() < manualMovementPauseUntil then return "manual" end
     -- Trái đang tồn tại được nhặt trước, sau đó tự trả quyền di chuyển cho farm.
     if _G.AutoCollectFruit and activeFruitTarget and activeFruitTarget.Parent then return "fruit" end
     if _G.AutoFarmLevel then return "level" end
@@ -954,6 +959,8 @@ end)
 
 -- ====== Bay tới mục tiêu (Tween), tự hủy khi chuyển sang đánh ======
 local function toTarget(targetCFrame)
+    if typeof(targetCFrame) == "Vector3" then targetCFrame = CFrame.new(targetCFrame) end
+    if typeof(targetCFrame) ~= "CFrame" then return false end
     movementSerial = movementSerial + 1
     local requestId = movementSerial
     local char = Player.Character
@@ -995,6 +1002,36 @@ local function toTarget(targetCFrame)
     setNoclip(false)
 
     return (rootPart.Position - targetCFrame.Position).Magnitude <= 25
+end
+
+-- Dịch chuyển thủ công có quyền ưu tiên, tránh vòng farm hủy tween ngay sau khi bấm nút.
+local function manualTeleportTo(targetCFrame)
+    if typeof(targetCFrame) == "Vector3" then targetCFrame = CFrame.new(targetCFrame) end
+    if typeof(targetCFrame) ~= "CFrame" then return false end
+
+    manualTravelSerial = manualTravelSerial + 1
+    local travelId = manualTravelSerial
+    manualMovementActive = true
+    manualMovementPauseUntil = os.clock() + 3
+    stopFarmMovement()
+
+    local char = Player.Character
+    local rootPart = char and char:FindFirstChild("HumanoidRootPart")
+    if rootPart and (rootPart.Position - targetCFrame.Position).Magnitude > 3500 then
+        pcall(function()
+            local remotes = ReplicatedStorage:FindFirstChild("Remotes")
+            local commF = remotes and remotes:FindFirstChild("CommF_")
+            if commF then commF:InvokeServer("requestEntrance", targetCFrame.Position) end
+        end)
+        task.wait(0.8)
+    end
+
+    local arrived = toTarget(targetCFrame)
+    if travelId == manualTravelSerial then
+        manualMovementActive = false
+        manualMovementPauseUntil = os.clock() + 3
+    end
+    return arrived
 end
 
 -- ====== Haki (Buso & Observation) ======
@@ -1094,6 +1131,32 @@ local function findControllerInFunction(fn)
     return nil
 end
 
+local function findControllerFromGC()
+    if type(getgc) ~= "function" then return nil end
+    local ok, objects = pcall(getgc, true)
+    if not ok or type(objects) ~= "table" then return nil end
+
+    for _, value in ipairs(objects) do
+        if type(value) == "table" then
+            local direct = rawget(value, "activeController")
+            if type(direct) == "table"
+                and (type(rawget(direct, "attack")) == "function"
+                    or type(rawget(direct, "Attack")) == "function") then
+                return direct
+            end
+
+            local attackFn = rawget(value, "attack") or rawget(value, "Attack")
+            if type(attackFn) == "function"
+                and (rawget(value, "timeToNextAttack") ~= nil
+                    or rawget(value, "hitboxMagnitude") ~= nil
+                    or rawget(value, "attacking") ~= nil) then
+                return value
+            end
+        end
+    end
+    return nil
+end
+
 local function resolveCombatController(force)
     if combatControllerCache
         and (type(combatControllerCache.attack) == "function"
@@ -1105,15 +1168,17 @@ local function resolveCombatController(force)
     if not force and now - lastCombatControllerResolve < 2 then return nil end
     lastCombatControllerResolve = now
 
+    local controller = nil
     local playerScripts = Player:FindFirstChild("PlayerScripts")
-    local combatModule = playerScripts and playerScripts:FindFirstChild("CombatFramework")
-    if not combatModule or not combatModule:IsA("ModuleScript") then return nil end
-
-    local ok, framework = pcall(require, combatModule)
-    if not ok then return nil end
-
-    local controller = findAttackController(framework, 4, {})
-        or findControllerInFunction(framework)
+    local combatModule = playerScripts and playerScripts:FindFirstChild("CombatFramework", true)
+    if combatModule and combatModule:IsA("ModuleScript") then
+        local ok, framework = pcall(require, combatModule)
+        if ok then
+            controller = findAttackController(framework, 4, {})
+                or findControllerInFunction(framework)
+        end
+    end
+    controller = controller or findControllerFromGC()
     if controller then combatControllerCache = controller end
     return controller
 end
@@ -1267,20 +1332,23 @@ local function attack()
         end
     end
 
-    -- Dự phòng cho hệ chiến đấu Net mới: phải gửi cả RegisterAttack lẫn RegisterHit.
-    if noDamageFor >= 1.25 and target and targetRoot then
+    -- Đường Net dùng BasePart thật trong danh sách hit; chỉ báo thành công khi remote thực sự được gửi.
+    if target and targetRoot and now - lastNetAttackTime >= math.max(delay, 0.10) then
+        lastNetAttackTime = now
+        local netFired = false
         local netOk = pcall(function()
             local modules = ReplicatedStorage:FindFirstChild("Modules")
             local net = modules and modules:FindFirstChild("Net")
             local registerAttack = net and net:FindFirstChild("RE/RegisterAttack")
             local registerHit = net and net:FindFirstChild("RE/RegisterHit")
             if not registerAttack or not registerHit then return end
-            local hitPart = target:FindFirstChild("Head") or targetRoot
-            local hitList = {{target, hitPart}}
-            registerAttack:FireServer(delay)
-            registerHit:FireServer(hitPart, hitList)
+            if not registerAttack:IsA("RemoteEvent") or not registerHit:IsA("RemoteEvent") then return end
+            local hitList = {targetRoot}
+            registerAttack:FireServer(0)
+            registerHit:FireServer(targetRoot, hitList)
+            netFired = true
         end)
-        if netOk then table.insert(methods, "NetHit") end
+        if netOk and netFired then table.insert(methods, "NetHit") end
     end
 
     local damageState = lastConfirmedDamageAt > 0 and now - lastConfirmedDamageAt < 1
@@ -3783,8 +3851,8 @@ IslandSection:AddButton({
         local targetPos = currentIslands[_G.SelectedIsland]
         if targetPos then
             notify("✈️ Teleport", "Đang bay tới " .. _G.SelectedIsland .. "...", 3)
-            toTarget(CFrame.new(targetPos))
-            notify("✅ Đã Đến", _G.SelectedIsland, 2)
+            local arrived = manualTeleportTo(CFrame.new(targetPos))
+            notify(arrived and "✅ Đã Đến" or "⚠️ Di chuyển bị gián đoạn", _G.SelectedIsland, 2)
         else
             notify("❌ Lỗi", "Không tìm thấy đảo", 2)
         end
@@ -3816,7 +3884,8 @@ if #ImportantNPCs > 0 then
             for _, npc in ipairs(ImportantNPCs) do
                 if npc.Name == _G.SelectedNPC then
                     notify("✈️ Teleport", "Đang bay tới " .. npc.Name, 3)
-                    toTarget(CFrame.new(npc.Position))
+                    local arrived = manualTeleportTo(CFrame.new(npc.Position))
+                    notify(arrived and "✅ Đã đến NPC" or "⚠️ Di chuyển bị gián đoạn", npc.Name, 2)
                     break
                 end
             end
@@ -3844,7 +3913,8 @@ BossTeleportSection:AddButton({
         local bossData = getBossData(_G.SelectedBossTP)
         if bossData then
             notify("✈️ Teleport", "Đang bay tới " .. bossData.Name, 3)
-            toTarget(CFrame.new(bossData.Position))
+            local arrived = manualTeleportTo(CFrame.new(bossData.Position))
+            notify(arrived and "✅ Đã đến Boss" or "⚠️ Di chuyển bị gián đoạn", bossData.Name, 2)
         end
     end
 })
@@ -3860,7 +3930,8 @@ FruitTeleportSection:AddButton({
         local handle = getFruitHandle(closestFruit)
         if closestFruit and handle then
             notify("🍎 Fruit TP", "Bay tới " .. closestFruit.Name, 3)
-            toTarget(handle.CFrame * CFrame.new(0, 2, 0))
+            local arrived = manualTeleportTo(handle.CFrame * CFrame.new(0, 2, 0))
+            notify(arrived and "✅ Đã đến trái" or "⚠️ Di chuyển bị gián đoạn", closestFruit.Name, 2)
         else
             notify("❌", "Không tìm thấy trái trên map", 2)
         end
@@ -4336,7 +4407,7 @@ notify(
 )
 
 print("=====================================")
-print("⚡ HAOTOOL v2.2.5 — LOADED SUCCESSFULLY")
+print("⚡ HAOTOOL v2.2.6 — LOADED SUCCESSFULLY")
 print("🌊 Sea: " .. WorldSea)
 print("📌 RightControl to toggle GUI")
 print("=====================================")
