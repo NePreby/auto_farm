@@ -66,6 +66,29 @@ local CoreGui             = game:GetService("CoreGui")
 local Lighting            = game:GetService("Lighting")
 local Workspace           = game:GetService("Workspace")
 
+-- Safe Data Helper Functions
+local function getPlayerData()
+    return Player:FindFirstChild("Data")
+end
+
+local function getPlayerLevel()
+    local data = getPlayerData()
+    local lvl = data and data:FindFirstChild("Level")
+    return lvl and lvl.Value or 1
+end
+
+local function getPlayerBeli()
+    local data = getPlayerData()
+    local beli = data and data:FindFirstChild("Beli")
+    return beli and beli.Value or 0
+end
+
+local function getPlayerFragments()
+    local data = getPlayerData()
+    local frag = data and data:FindFirstChild("Fragments")
+    return frag and frag.Value or 0
+end
+
 local featureErrors = {}
 local function runFeature(featureName, callback)
     local ok, result = pcall(callback)
@@ -793,6 +816,13 @@ local function toTarget(targetCFrame)
 
     local speed = 300
     setNoclip(true)
+
+    local bv = rootPart:FindFirstChild("HAOTOOL_FlightBV") or Instance.new("BodyVelocity")
+    bv.Name = "HAOTOOL_FlightBV"
+    bv.MaxForce = Vector3.new(1e9, 1e9, 1e9)
+    bv.Velocity = Vector3.zero
+    bv.Parent = rootPart
+
     local tween = TweenService:Create(
         rootPart,
         TweenInfo.new(distance / speed, Enum.EasingStyle.Linear),
@@ -802,11 +832,16 @@ local function toTarget(targetCFrame)
     tween:Play()
     tween.Completed:Wait()
 
+    pcall(function()
+        if bv and bv.Parent then bv:Destroy() end
+    end)
+
     if requestId ~= movementSerial then return false end
     if currentTween == tween then currentTween = nil end
     if farmState == "moving" then farmState = "idle" end
     setNoclip(false)
 
+    if not rootPart or not rootPart.Parent then return false end
     return (rootPart.Position - targetCFrame.Position).Magnitude <= 25
 end
 
@@ -917,9 +952,9 @@ end
 -- ====== Trang bị vũ khí theo loại ======
 local function equipWeapon(weaponType)
     pcall(function()
-        local backpack = Player.Backpack
+        local backpack = Player:FindFirstChild("Backpack")
         local char = Player.Character
-        if not char or not char:FindFirstChild("Humanoid") then return end
+        if not char or not char:FindFirstChild("Humanoid") or not backpack then return end
 
         -- Kiểm tra đã trang bị đúng loại chưa
         local equipped = char:FindFirstChildOfClass("Tool")
@@ -1039,12 +1074,13 @@ local function bringMobsNear(targetName, centerCFrame)
     if not _G.BringMob then return end
 
     pcall(function()
-        if not workspace:FindFirstChild("Enemies") then return end
+        local enemies = workspace:FindFirstChild("Enemies")
+        if not enemies then return end
         grantSimulationRadius()
 
         local radiusLimit = _G.SafetyMode and 350 or 1000
         local radius = math.clamp(tonumber(_G.BringRadius) or 300, 50, radiusLimit)
-        for _, mob in pairs(workspace.Enemies:GetChildren()) do
+        for _, mob in pairs(enemies:GetChildren()) do
             local humanoid = mob:FindFirstChildOfClass("Humanoid")
             local rootPart = mob:FindFirstChild("HumanoidRootPart")
 
@@ -1102,6 +1138,12 @@ local function getQuestData(level)
     elseif WorldSea == 2 then questTable = QuestsSea2
     elseif WorldSea == 3 then questTable = QuestsSea3
     else questTable = QuestsSea1
+    end
+
+    if not questTable or #questTable == 0 then return nil end
+
+    if level < questTable[1].MinLevel then
+        return questTable[1]
     end
 
     for _, data in ipairs(questTable) do
@@ -1280,14 +1322,15 @@ local function touchFruit(fruit)
 end
 
 local function findMob(mobName, useNearest)
-    if not workspace:FindFirstChild("Enemies") then return nil end
+    local enemies = workspace:FindFirstChild("Enemies")
+    if not enemies then return nil end
     local char = Player.Character
     local rootPart = char and char:FindFirstChild("HumanoidRootPart")
 
     local closest = nil
     local closestDist = math.huge
 
-    for _, mob in pairs(workspace.Enemies:GetChildren()) do
+    for _, mob in pairs(enemies:GetChildren()) do
         if mob:FindFirstChild("Humanoid") and mob.Humanoid.Health > 0
             and mob:FindFirstChild("HumanoidRootPart") then
 
@@ -1313,8 +1356,9 @@ end
 
 -- ====== Tìm boss ======
 local function findBoss(bossName)
-    if not workspace:FindFirstChild("Enemies") then return nil end
-    for _, mob in pairs(workspace.Enemies:GetChildren()) do
+    local enemies = workspace:FindFirstChild("Enemies")
+    if not enemies then return nil end
+    for _, mob in pairs(enemies:GetChildren()) do
         if mobNameMatches(mob.Name, bossName)
             and mob:FindFirstChild("Humanoid") and mob.Humanoid.Health > 0
             and mob:FindFirstChild("HumanoidRootPart") then
@@ -1329,7 +1373,7 @@ local function getEnemyList()
     local enemies = {}
     pcall(function()
         if workspace:FindFirstChild("Enemies") then
-            for _, mob in pairs(workspace.Enemies:GetChildren()) do
+            for _, mob in pairs(enemies:GetChildren()) do
                 if mob:FindFirstChild("Humanoid") and not table.find(enemies, mob.Name) then
                     table.insert(enemies, mob.Name)
                 end
@@ -1373,6 +1417,9 @@ local function getBossList()
         end
     end
     table.sort(bosses)
+    if #bosses == 0 then
+        return {"(Không có boss)"}
+    end
     return bosses
 end
 
@@ -1478,7 +1525,7 @@ local function startSelectedRaid()
     local now = os.clock()
     if isInRaid() then return false end
     local level = Player:FindFirstChild("Data") and Player.Data:FindFirstChild("Level")
-        and Player.Data.Level.Value or 0
+        and getPlayerLevel() or 0
     if WorldSea == 1 or level < 1100 then
         if now - lastRaidCapabilityWarning >= 15 then
             lastRaidCapabilityWarning = now
@@ -1679,7 +1726,7 @@ task.spawn(function()
 
         if _G.AutoFarmLevel and modeCanMove("level") then
             runFeature("Auto Farm Level", function()
-                local level = Player.Data.Level.Value
+                local level = getPlayerLevel()
                 local quest = getQuestData(level)
                 if not quest then return end
 
@@ -1841,6 +1888,7 @@ local BoneMobNames = {
     ["living zombie"] = true,
     ["demonic soul"] = true,
     ["posessed mummy"] = true,
+    ["possessed mummy"] = true,
     ["evil wraith"] = true,
 }
 local lastBoneWarning = 0
@@ -1971,12 +2019,13 @@ task.spawn(function()
         task.wait(0.3)
         if _G.AutoStats then
             runFeature("Auto Stats", function()
-                local points = Player.Data.Points.Value
-                if points > 0 then
+                local data = getPlayerData()
+                local pointsObj = data and data:FindFirstChild("Points")
+                if pointsObj and pointsObj.Value > 0 then
                     local statName = _G.StatToUpgrade == "Blox Fruit"
                         and "Demon Fruit" or _G.StatToUpgrade
                     ReplicatedStorage.Remotes.CommF_:InvokeServer(
-                        "AddPoint", statName, math.min(points, 3)
+                        "AddPoint", statName, math.min(pointsObj.Value, 3)
                     )
                 end
             end)
@@ -1995,8 +2044,8 @@ task.spawn(function()
                 local rootPart = char and char:FindFirstChild("HumanoidRootPart")
                 local closestDist = math.huge
 
-                for _, obj in pairs(workspace:GetDescendants()) do
-                    if obj:IsA("BasePart") and obj.Name:lower():find("chest") then
+                local function checkChest(obj)
+                    if obj:IsA("BasePart") and string.find(string.lower(obj.Name), "chest", 1, true) then
                         if rootPart then
                             local d = (obj.Position - rootPart.Position).Magnitude
                             if d < closestDist then
@@ -2005,7 +2054,15 @@ task.spawn(function()
                             end
                         else
                             targetChest = obj
-                            break
+                        end
+                    end
+                end
+
+                for _, obj in pairs(workspace:GetChildren()) do
+                    checkChest(obj)
+                    if obj:IsA("Folder") or obj:IsA("Model") then
+                        for _, child in pairs(obj:GetChildren()) do
+                            checkChest(child)
                         end
                     end
                 end
@@ -2054,7 +2111,9 @@ end
 task.spawn(function()
     RunService.RenderStepped:Connect(function()
         if RuntimeEnv.HAOTOOL_RUN_TOKEN ~= CurrentRunToken then return end
-        runFeature("Di chuyển", function()
+        if not (_G.WalkSpeedHack or _G.JumpPowerHack or _G.InfiniteEnergy) then return end
+
+        pcall(function()
             local char = Player.Character
             local humanoid = char and char:FindFirstChildOfClass("Humanoid")
             if not humanoid then return end
@@ -2273,7 +2332,7 @@ local function buildSystemDiagnostic()
     check("Folder Enemies", workspace:FindFirstChild("Enemies"))
     check("Dữ liệu quest Sea hiện tại", getQuestData(
         Player:FindFirstChild("Data") and Player.Data:FindFirstChild("Level")
-            and Player.Data.Level.Value or 1
+            and getPlayerLevel() or 1
     ) ~= nil)
     check("VirtualInputManager", VirtualInputManager ~= nil)
 
@@ -3506,8 +3565,8 @@ UtilitySection:AddButton({
     Description = "Xem thông tin nhân vật hiện tại",
     Callback = function()
         pcall(function()
-            local lvl = Player.Data.Level.Value or "?"
-            local beli = Player.Data.Beli.Value or "?"
+            local lvl = getPlayerLevel()
+            local beli = getPlayerBeli()
             local frag = "?"
             pcall(function() frag = Player.Data.Fragments.Value end)
 
@@ -3647,6 +3706,10 @@ if type(teleportState) == "table" and Fluent and Fluent.Options then
         StatDropdown = "StatToUpgrade",
         AntiAFKToggle = "AntiAFK",
         ServerHopNoFruitToggle = "ServerHopNoFruit",
+        ESPPlayerColor = "ESPPlayerColor",
+        ESPMobColorPick = "ESPMobColor",
+        ESPBossColorPick = "ESPBossColor",
+        ESPFruitColorPick = "ESPFruitColor",
     }
 
     for optionId, stateKey in pairs(teleportOptionMap) do
