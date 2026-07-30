@@ -436,6 +436,7 @@ setDefault("AutoHaki", true)
 setDefault("AutoKen", false)
 setDefault("AutoObsV2", false)
 setDefault("AutoDodge", false)
+setDefault("AutoSaberQuest", false)
 setDefault("SelectedFightingStyleShop", "Dark Step")
 
 -- Misc
@@ -483,7 +484,7 @@ local TELEPORT_STATE_KEYS = {
     "HoldFarmPosition", "FreezeTarget", "AttackDelay", "BackgroundAttack", "NoAttackAnimation", "HitboxSize",
     "SafetyMode", "AutoSkill", "SkillCooldown",
     "AutoRaid", "AutoRaidFarm", "AutoAwakening", "RaidChip",
-    "AutoHaki", "AutoKen", "AutoObsV2", "AutoDodge", "SelectedFightingStyleShop",
+    "AutoHaki", "AutoKen", "AutoObsV2", "AutoDodge", "AutoSaberQuest", "SelectedFightingStyleShop",
     "AutoFruitFinder", "AutoCollectFruit", "AutoStoreFruit", "FruitESP", "AutoGachaFruit",
     "ESPPlayer", "ESPMob", "ESPBoss", "ESPChest", "ESPFlower",
     "ESPIsland", "ESPDistance", "ESPTeamCheck",
@@ -993,6 +994,7 @@ local function getActiveMovementMode()
     if manualMovementActive or os.clock() < manualMovementPauseUntil then return "manual" end
     -- Trái đang tồn tại được nhặt trước, sau đó tự trả quyền di chuyển cho farm.
     if _G.AutoCollectFruit and activeFruitTarget and activeFruitTarget.Parent then return "fruit" end
+    if _G.AutoSaberQuest then return "saber" end
     if _G.AutoFarmLevel then return "level" end
     if _G.AutoFarmBoss then return "boss" end
     if _G.AutoFarmMastery then return "mastery" end
@@ -1113,6 +1115,12 @@ RunService.Heartbeat:Connect(function()
 end)
 
 -- ====== Bay tới mục tiêu (Tween), tự hủy khi chuyển sang đánh ======
+-- Hành trình xa đi theo 3 chặng: nâng độ cao, bay ngang, rồi hạ xuống.
+-- Cách này giữ nhân vật cách xa mặt biển khi chuyển giữa các đảo/map.
+local LONG_TRAVEL_DISTANCE = 500
+local MIN_SAFE_CRUISE_Y = 350
+local SAFE_CRUISE_CLEARANCE = 120
+
 local function toTarget(targetCFrame)
     if typeof(targetCFrame) == "Vector3" then targetCFrame = CFrame.new(targetCFrame) end
     if typeof(targetCFrame) ~= "CFrame" then return false end
@@ -1141,22 +1149,64 @@ local function toTarget(targetCFrame)
     end
 
     local speed = 300
-    setNoclip(true)
-    local tween = TweenService:Create(
-        rootPart,
-        TweenInfo.new(distance / speed, Enum.EasingStyle.Linear),
-        {CFrame = targetCFrame}
-    )
-    currentTween = tween
-    tween:Play()
-    tween.Completed:Wait()
+    local function tweenSegment(segmentCFrame)
+        if requestId ~= movementSerial or not rootPart.Parent then return false end
 
+        local segmentDistance = (rootPart.Position - segmentCFrame.Position).Magnitude
+        if segmentDistance < 15 then
+            rootPart.CFrame = segmentCFrame
+            rootPart.AssemblyLinearVelocity = Vector3.zero
+            return true
+        end
+
+        local tween = TweenService:Create(
+            rootPart,
+            TweenInfo.new(segmentDistance / speed, Enum.EasingStyle.Linear),
+            {CFrame = segmentCFrame}
+        )
+        currentTween = tween
+        tween:Play()
+        local playbackState = tween.Completed:Wait()
+
+        if currentTween == tween then currentTween = nil end
+        if requestId ~= movementSerial or playbackState == Enum.PlaybackState.Cancelled then return false end
+        return (rootPart.Position - segmentCFrame.Position).Magnitude <= 25
+    end
+
+    setNoclip(true)
+
+    local startPosition = rootPart.Position
+    local targetPosition = targetCFrame.Position
+    local horizontalOffset = Vector3.new(
+        targetPosition.X - startPosition.X,
+        0,
+        targetPosition.Z - startPosition.Z
+    )
+
+    if horizontalOffset.Magnitude >= LONG_TRAVEL_DISTANCE then
+        local cruiseY = math.max(
+            MIN_SAFE_CRUISE_Y,
+            startPosition.Y + SAFE_CRUISE_CLEARANCE,
+            targetPosition.Y + SAFE_CRUISE_CLEARANCE
+        )
+        local liftCFrame = CFrame.new(startPosition.X, cruiseY, startPosition.Z)
+        local cruiseCFrame = CFrame.new(targetPosition.X, cruiseY, targetPosition.Z)
+
+        if not tweenSegment(liftCFrame) or not tweenSegment(cruiseCFrame) then
+            if requestId == movementSerial then
+                farmState = "idle"
+                setNoclip(false)
+            end
+            return false
+        end
+    end
+
+    local arrived = tweenSegment(targetCFrame)
     if requestId ~= movementSerial then return false end
-    if currentTween == tween then currentTween = nil end
     if farmState == "moving" then farmState = "idle" end
     setNoclip(false)
 
-    return (rootPart.Position - targetCFrame.Position).Magnitude <= 25
+    return arrived and (rootPart.Position - targetCFrame.Position).Magnitude <= 25
 end
 
 -- Dịch chuyển thủ công có quyền ưu tiên, tránh vòng farm hủy tween ngay sau khi bấm nút.
@@ -1963,6 +2013,154 @@ local function touchFruit(fruit)
     task.wait(0.35)
     return not fruit.Parent or getFruitHandle(fruit) == nil
 end
+
+-- Khi đang ở dưới biển, nổi thẳng lên rồi ghé bờ trước khi bay tới trái trên đất.
+local moveToFruitSafely
+do
+local WATER_SAMPLE_OFFSETS = {
+    Vector2.new(0, 0),
+    Vector2.new(12, 0), Vector2.new(-12, 0),
+    Vector2.new(0, 12), Vector2.new(0, -12),
+    Vector2.new(28, 0), Vector2.new(-28, 0),
+    Vector2.new(0, 28), Vector2.new(0, -28),
+}
+local SHORE_SEARCH_RADII = {24, 50, 90, 150, 240, 360, 520, 750, 1050, 1400}
+
+local function rayResultIsWater(result)
+    if not result then return false end
+    if result.Material == Enum.Material.Water then return true end
+    local instanceName = result.Instance and string.lower(result.Instance.Name) or ""
+    return instanceName == "sea"
+        or string.find(instanceName, "water", 1, true) ~= nil
+        or string.find(instanceName, "ocean", 1, true) ~= nil
+end
+
+local function detectWaterSurfaceY(position, fruit)
+    local params = RaycastParams.new()
+    params.FilterType = Enum.RaycastFilterType.Exclude
+    params.FilterDescendantsInstances = {Player.Character, fruit}
+    params.IgnoreWater = false
+    local originY = math.max(position.Y + 500, 4000)
+
+    for _, offset in ipairs(WATER_SAMPLE_OFFSETS) do
+        local origin = Vector3.new(position.X + offset.X, originY, position.Z + offset.Y)
+        local result = Workspace:Raycast(origin, Vector3.new(0, -8000, 0), params)
+        if rayResultIsWater(result) then
+            return result.Position.Y
+        end
+    end
+    return nil
+end
+
+local function characterIsUnderwater(rootPart, humanoid, fruit)
+    if not rootPart or not humanoid then return false, nil end
+    local swimming = humanoid:GetState() == Enum.HumanoidStateType.Swimming
+    local surfaceY = detectWaterSurfaceY(rootPart.Position, fruit)
+    if surfaceY then
+        return swimming or rootPart.Position.Y < surfaceY - 2, surfaceY
+    end
+    if swimming then
+        -- Blox Fruits thường đặt mặt biển gần Y=0; cộng thêm độ cao để hỗ trợ hồ ở vị trí cao.
+        return true, math.max(0, rootPart.Position.Y + 35)
+    end
+    return false, nil
+end
+
+local function validShoreHit(result, surfaceY)
+    if not result or rayResultIsWater(result) then return false end
+    if result.Position.Y < surfaceY + 1 or result.Normal.Y < 0.35 then return false end
+    local instance = result.Instance
+    return instance and (instance:IsA("Terrain") or instance.CanCollide == true)
+end
+
+local function findNearestShoreCFrame(position, surfaceY)
+    local params = RaycastParams.new()
+    local map = Workspace:FindFirstChild("Map")
+    local terrain = Workspace:FindFirstChildOfClass("Terrain")
+    local include = {}
+    if map then table.insert(include, map) end
+    if terrain then table.insert(include, terrain) end
+    if #include == 0 then return nil end
+    params.FilterType = Enum.RaycastFilterType.Include
+    params.FilterDescendantsInstances = include
+    params.IgnoreWater = true
+
+    local bestPosition, bestScore = nil, math.huge
+    local originY = surfaceY + 2500
+    for ringIndex, radius in ipairs(SHORE_SEARCH_RADII) do
+        local angleOffset = ringIndex % 2 == 0 and math.pi / 16 or 0
+        for step = 0, 15 do
+            local angle = angleOffset + step * math.pi / 8
+            local x = position.X + math.cos(angle) * radius
+            local z = position.Z + math.sin(angle) * radius
+            local origin = Vector3.new(x, originY, z)
+            local result = Workspace:Raycast(origin, Vector3.new(0, -5000, 0), params)
+            if validShoreHit(result, surfaceY) then
+                local score = radius + math.abs(result.Position.Y - surfaceY) * 0.05
+                if score < bestScore then
+                    bestScore = score
+                    bestPosition = result.Position + Vector3.new(0, 6, 0)
+                end
+            end
+        end
+        if bestPosition then break end
+    end
+    return bestPosition and CFrame.new(bestPosition) or nil
+end
+
+local function fruitTravelIsActive(fruit, manual)
+    if not fruit or not fruit.Parent or not getFruitHandle(fruit) then return false end
+    if manual then return true end
+    return _G.AutoCollectFruit and activeFruitTarget == fruit and modeCanMove("fruit")
+end
+
+moveToFruitSafely = function(fruit, manual, statusCallback)
+    local handle = getFruitHandle(fruit)
+    local character = Player.Character
+    local rootPart = character and character:FindFirstChild("HumanoidRootPart")
+    local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+    if not handle or not rootPart or not humanoid then return false end
+
+    local function report(message)
+        if type(statusCallback) == "function" then
+            pcall(statusCallback, message)
+        end
+    end
+    local function travel(targetCFrame)
+        if not fruitTravelIsActive(fruit, manual) then return false end
+        if manual then return manualTeleportTo(targetCFrame) end
+        return toTarget(targetCFrame)
+    end
+
+    local underwater, surfaceY = characterIsUnderwater(rootPart, humanoid, fruit)
+    local fruitIsAboveWater = surfaceY and handle.Position.Y > surfaceY + 2
+    if underwater and fruitIsAboveWater then
+        report("Đang nổi thẳng lên mặt nước trước khi tới " .. fruit.Name)
+        local surfacePoint = CFrame.new(rootPart.Position.X, surfaceY + 12, rootPart.Position.Z)
+        if not travel(surfacePoint) then return false end
+        task.wait(0.15)
+        if not fruitTravelIsActive(fruit, manual) then return false end
+
+        rootPart = Player.Character and Player.Character:FindFirstChild("HumanoidRootPart")
+        if not rootPart then return false end
+        local shorePoint = findNearestShoreCFrame(rootPart.Position, surfaceY)
+        if shorePoint then
+            report("Đang lên bờ trước khi tới " .. fruit.Name)
+            if not travel(shorePoint) then return false end
+            task.wait(0.12)
+        else
+            report("Đã lên mặt nước; không tìm thấy bờ gần nên tiếp tục trên mặt nước")
+        end
+    end
+
+    if not fruitTravelIsActive(fruit, manual) then return false end
+    handle = getFruitHandle(fruit)
+    if not handle then return false end
+    report("Đang di chuyển tới " .. fruit.Name)
+    return travel(handle.CFrame * CFrame.new(0, 2, 0))
+end
+end
+
 local function findMob(mobName, useNearest)
     if not workspace:FindFirstChild("Enemies") then return nil end
     local char = Player.Character
@@ -2312,8 +2510,104 @@ local function invokeCombatShop(...)
     return ok, result
 end
 
-local function resultText(ok, result)
-    if not ok then return "Lỗi: " .. tostring(result) end
+local styleToolNames = {
+    ["Dark Step"] = "Black Leg",
+    ["Electric"] = "Electro",
+    ["Water Kung Fu"] = "Fishman Karate",
+    ["Dragon Breath"] = "Dragon Claw",
+    ["Superhuman"] = "Superhuman",
+    ["Death Step"] = "Death Step",
+    ["Sharkman Karate"] = "Sharkman Karate",
+    ["Electric Claw"] = "Electric Claw",
+    ["Dragon Talon"] = "Dragon Talon",
+    ["Godhuman"] = "Godhuman",
+    ["Sanguine Art"] = "Sanguine Art",
+}
+
+local shopCosts = {
+    ["Dark Step"] = {Beli = 150000},
+    ["Electric"] = {Beli = 500000},
+    ["Water Kung Fu"] = {Beli = 750000},
+    ["Dragon Breath"] = {Fragments = 1500},
+    ["Superhuman"] = {Beli = 3000000},
+    ["Death Step"] = {Beli = 2500000, Fragments = 5000},
+    ["Sharkman Karate"] = {Beli = 2500000, Fragments = 5000},
+    ["Electric Claw"] = {Beli = 3000000, Fragments = 5000},
+    ["Dragon Talon"] = {Beli = 3000000, Fragments = 5000},
+    ["Godhuman"] = {Beli = 5000000, Fragments = 5000},
+    ["Sanguine Art"] = {Beli = 5000000, Fragments = 5000},
+    ["AirJump"] = {Beli = 10000},
+    ["Aura"] = {Beli = 25000},
+    ["FlashStep"] = {Beli = 100000},
+    ["Instinct"] = {Beli = 750000},
+}
+
+local function formatShopAmount(value)
+    local text = tostring(math.floor(tonumber(value) or 0))
+    local replacements
+    repeat
+        text, replacements = text:gsub("^(-?%d+)(%d%d%d)", "%1.%2")
+    until replacements == 0
+    return text
+end
+
+local function findStyleTool(entry)
+    local toolName = entry and styleToolNames[entry.Id]
+    if not toolName then return nil end
+    local character = Player.Character
+    local backpack = Player:FindFirstChildOfClass("Backpack")
+    local tool = character and character:FindFirstChild(toolName)
+    if tool and tool:IsA("Tool") then return tool end
+    tool = backpack and backpack:FindFirstChild(toolName)
+    if tool and tool:IsA("Tool") then return tool end
+    return nil
+end
+
+local function waitForStyleTool(entry, timeout)
+    local deadline = os.clock() + (timeout or 2.5)
+    repeat
+        local tool = findStyleTool(entry)
+        if tool then return tool end
+        task.wait(0.1)
+    until os.clock() >= deadline
+    return findStyleTool(entry)
+end
+
+local function missingCurrencyText(entry)
+    local cost = entry and shopCosts[entry.Id]
+    if not cost then return nil end
+    local missing = {}
+    local beli = getPlayerBeli()
+    local fragments = tonumber(getPlayerValue("Fragments", 0)) or 0
+    if cost.Beli and beli < cost.Beli then
+        table.insert(missing, string.format(
+            "Beli: có %s, cần %s (thiếu %s)",
+            formatShopAmount(beli),
+            formatShopAmount(cost.Beli),
+            formatShopAmount(cost.Beli - beli)
+        ))
+    end
+    if cost.Fragments and fragments < cost.Fragments then
+        table.insert(missing, string.format(
+            "Mảnh: có %s, cần %s (thiếu %s)",
+            formatShopAmount(fragments),
+            formatShopAmount(cost.Fragments),
+            formatShopAmount(cost.Fragments - fragments)
+        ))
+    end
+    return #missing > 0 and ("Không đủ tiền:\n" .. table.concat(missing, "\n")) or nil
+end
+
+local function resultText(ok, result, entry, verifiedTool)
+    if not ok then return "Lỗi kết nối cửa hàng: " .. tostring(result) end
+    if verifiedTool then
+        return "Thành công: đã mua / trang bị " .. entry.Id .. "."
+    end
+    local missingCurrency = missingCurrencyText(entry)
+    if result == 0 or tostring(result) == "0" then
+        return missingCurrency
+            or "Game từ chối giao dịch. Hãy kiểm tra điều kiện, nhiệm vụ và nguyên liệu."
+    end
     if result == nil or tostring(result) == "" then return "Game đã nhận yêu cầu mua." end
     return "Phản hồi game: " .. tostring(result)
 end
@@ -2346,10 +2640,12 @@ CombatShop.BuyStyle = function(styleId)
         ok, result = invokeCombatShop(entry.Command)
     end
 
+    local verifiedTool = ok and waitForStyleTool(entry, 2.5) or nil
+
     notify(
         "Mua " .. entry.Id,
         "Giá: " .. entry.Price .. "\nĐiều kiện: " .. entry.Requirement
-            .. "\n" .. resultText(ok, result),
+            .. "\n" .. resultText(ok, result, entry, verifiedTool),
         7
     )
     return ok, result
@@ -2372,7 +2668,7 @@ CombatShop.BuyAbility = function(abilityId)
     notify(
         "Mua " .. entry.Name,
         "Giá: " .. entry.Price .. "\nĐiều kiện: " .. entry.Requirement
-            .. "\n" .. resultText(ok, result),
+            .. "\n" .. resultText(ok, result, entry),
         6
     )
     return ok, result
@@ -2382,7 +2678,7 @@ CombatShop.BuyAllAbilities = function()
     local summary = {}
     for _, entry in ipairs(abilityEntries) do
         local ok, result = invokeCombatShop(table.unpack(entry.Args))
-        table.insert(summary, entry.Name .. ": " .. resultText(ok, result))
+        table.insert(summary, entry.Name .. ": " .. resultText(ok, result, entry))
         task.wait(0.2)
     end
     notify(
@@ -2390,6 +2686,557 @@ CombatShop.BuyAllAbilities = function()
         "Tổng giá khi chưa sở hữu: 885.000 Beli\n" .. table.concat(summary, "\n"),
         10
     )
+end
+end
+
+-- ====== Tự động mở Sea 2 khi Auto Farm Level đạt cấp 700 ======
+local Sea2Quest = {}
+do
+local lastSea2QuestStatus = "Chờ đạt cấp 700 tại Biển 1"
+local lastDetectiveAttempt = -math.huge
+local lastTravelAttempt = -math.huge
+local lastProgressCheck = -math.huge
+local cachedProgressOk = false
+local cachedProgress = nil
+local iceAdmiralEngaged = false
+
+local SEA2_POINTS = {
+    Detective = CFrame.new(4849.299, 5.651, 719.612),
+    IceDoor = CFrame.new(1347.712, 37.375, -1325.649),
+}
+
+local function setSea2QuestStatus(message)
+    lastSea2QuestStatus = tostring(message or "Đang kiểm tra nhiệm vụ mở Biển 2")
+end
+
+local function getSea2CommF()
+    local remotes = ReplicatedStorage:FindFirstChild("Remotes")
+    local commF = remotes and remotes:FindFirstChild("CommF_")
+    if commF and commF:IsA("RemoteFunction") then return commF end
+    return nil
+end
+
+local function invokeSea2Remote(...)
+    local commF = getSea2CommF()
+    if not commF then return false, "Không tìm thấy RemoteFunction CommF_." end
+    local args = table.pack(...)
+    return pcall(function()
+        return commF:InvokeServer(table.unpack(args, 1, args.n))
+    end)
+end
+
+local function getDressrosaProgress()
+    if os.clock() - lastProgressCheck < 1 then
+        return cachedProgressOk, cachedProgress
+    end
+    lastProgressCheck = os.clock()
+    cachedProgressOk, cachedProgress = invokeSea2Remote("DressrosaQuestProgress", "Dressrosa")
+    return cachedProgressOk, cachedProgress
+end
+
+local function findSea2Tool(toolName)
+    local character = Player.Character
+    local backpack = Player:FindFirstChildOfClass("Backpack")
+    local tool = character and character:FindFirstChild(toolName)
+    if tool and tool:IsA("Tool") then return tool end
+    tool = backpack and backpack:FindFirstChild(toolName)
+    if tool and tool:IsA("Tool") then return tool end
+    return nil
+end
+
+local function equipSea2Tool(toolName)
+    local tool = findSea2Tool(toolName)
+    local character = Player.Character
+    local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+    if not tool or not humanoid then return nil end
+    if tool.Parent ~= character then
+        pcall(function() humanoid:EquipTool(tool) end)
+        task.wait(0.2)
+    end
+    return (character and character:FindFirstChild(toolName)) or tool
+end
+
+local function getIceDoor()
+    local map = Workspace:FindFirstChild("Map")
+    local ice = map and map:FindFirstChild("Ice")
+    local door = ice and ice:FindFirstChild("Door", true)
+    if door and door:IsA("BasePart") then return door end
+    return nil
+end
+
+local function iceDoorIsOpen(door)
+    return door and door.CanCollide == false and door.Transparency >= 0.9
+end
+
+local function progressIsComplete(progress)
+    return tonumber(progress) == 0
+end
+
+local function sea2QuestCanContinue()
+    return _G.AutoFarmLevel
+        and WorldSea == 1
+        and getPlayerLevel() >= 700
+        and modeCanMove("level")
+end
+
+local function travelSea2Quest(label, targetCFrame)
+    if not sea2QuestCanContinue() then return false end
+    clearFarmTarget()
+    setSea2QuestStatus("Mở Biển 2: đang đến " .. label)
+    return toTarget(targetCFrame)
+end
+
+local function touchKeyToDoor(key, door)
+    if not key or not door then return end
+    local handle = key:FindFirstChild("Handle")
+    if handle and type(firetouchinterest) == "function" then
+        pcall(function()
+            firetouchinterest(handle, door, 0)
+            task.wait(0.1)
+            firetouchinterest(handle, door, 1)
+        end)
+    end
+end
+
+local function tryTravelDressrosa()
+    if os.clock() - lastTravelAttempt < 4 then return end
+    lastTravelAttempt = os.clock()
+    clearFarmTarget()
+    setSea2QuestStatus("Mở Biển 2: đã hạ Ice Admiral, đang chuyển sang Biển 2")
+    invokeSea2Remote("TravelDressrosa")
+    task.wait(4)
+end
+
+Sea2Quest.ShouldRun = function(level)
+    return WorldSea == 1 and (tonumber(level) or getPlayerLevel()) >= 700
+end
+
+Sea2Quest.Step = function()
+    if not sea2QuestCanContinue() then return false end
+
+    if hasActiveQuest() then
+        setSea2QuestStatus("Mở Biển 2: đang bỏ nhiệm vụ luyện cấp cũ")
+        abandonQuest()
+        acceptedQuestSignature = nil
+        task.wait(0.5)
+        return true
+    end
+
+    local progressOk, progress = getDressrosaProgress()
+    if progressOk and progressIsComplete(progress) then
+        tryTravelDressrosa()
+        return true
+    end
+
+    local door = getIceDoor()
+    if not door then
+        setSea2QuestStatus("Mở Biển 2: đang chờ khu Frozen Village tải xong")
+        task.wait(0.8)
+        return true
+    end
+
+    if not iceDoorIsOpen(door) then
+        local key = findSea2Tool("Key")
+        if not key then
+            if travelSea2Quest("Military Detective", SEA2_POINTS.Detective)
+                and os.clock() - lastDetectiveAttempt >= 1 then
+                lastDetectiveAttempt = os.clock()
+                setSea2QuestStatus("Mở Biển 2: đang nhận Key từ Military Detective")
+                invokeSea2Remote("DressrosaQuestProgress", "Detective")
+                lastProgressCheck = -math.huge
+                task.wait(0.8)
+            end
+            return true
+        end
+
+        key = equipSea2Tool("Key")
+        setSea2QuestStatus("Mở Biển 2: đang mang Key đến cửa Ice Admiral")
+        if travelSea2Quest("cửa Ice Admiral", SEA2_POINTS.IceDoor) then
+            key = equipSea2Tool("Key") or key
+            touchKeyToDoor(key, door)
+            task.wait(1)
+        end
+        return true
+    end
+
+    local iceAdmiral = findBoss("Ice Admiral")
+    if iceAdmiral then
+        iceAdmiralEngaged = true
+        setSea2QuestStatus("Mở Biển 2: đang đánh Ice Admiral")
+        equipWeapon(_G.SelectWeapon)
+        engageTarget(iceAdmiral, iceAdmiral.Name, _G.SelectWeapon)
+        return true
+    end
+
+    if iceAdmiralEngaged then
+        tryTravelDressrosa()
+        return true
+    end
+
+    clearFarmTarget()
+    travelSea2Quest("phòng Ice Admiral", SEA2_POINTS.IceDoor)
+    setSea2QuestStatus("Mở Biển 2: đang chờ Ice Admiral xuất hiện")
+    task.wait(0.8)
+    return true
+end
+
+Sea2Quest.GetStatus = function()
+    return lastSea2QuestStatus
+end
+end
+-- ====== Tự động làm Saber Puzzle để mở khóa điều kiện Haki Quan Sát ======
+local SaberQuest = {}
+do
+local lastSaberQuestStatus = "Chờ bật Tự động làm Saber Puzzle"
+local saberCompletionNotified = false
+local lastSaberInventoryCheck = -math.huge
+local cachedSaberOwned = false
+
+local SABER_POINTS = {
+    JungleStart = CFrame.new(-1612.559, 36.977, 148.720),
+    Torch = CFrame.new(-1610.008, 11.505, 164.002),
+    BurnWall = CFrame.new(1114.615, 5.047, 4350.228),
+    Water = CFrame.new(1397.229, 37.348, -1320.852),
+    SickMan = CFrame.new(1458.543, 88.252, -1390.349),
+    RichMan = CFrame.new(-910.980, 13.752, 4078.146),
+    MobLeader = CFrame.new(-2852.902, 7.562, 5367.724),
+    RelicSlot = CFrame.new(-1405.420, 29.852, 5.624),
+    SaberExpert = CFrame.new(-1458.895, 29.887, -50.634),
+}
+
+local function setSaberQuestStatus(message)
+    lastSaberQuestStatus = tostring(message or "Đang kiểm tra tiến độ Saber Puzzle")
+end
+
+local function getSaberCommF()
+    local remotes = ReplicatedStorage:FindFirstChild("Remotes")
+    local commF = remotes and remotes:FindFirstChild("CommF_")
+    if commF and commF:IsA("RemoteFunction") then return commF end
+    return nil
+end
+
+local function invokeSaberProgress(action, ...)
+    local commF = getSaberCommF()
+    if not commF then return false, "Không tìm thấy RemoteFunction CommF_." end
+    local args = table.pack(...)
+    return pcall(function()
+        return commF:InvokeServer("ProQuestProgress", action, table.unpack(args, 1, args.n))
+    end)
+end
+
+local function findQuestTool(toolName)
+    local character = Player.Character
+    local backpack = Player:FindFirstChildOfClass("Backpack")
+    local tool = character and character:FindFirstChild(toolName)
+    if tool and tool:IsA("Tool") then return tool end
+    tool = backpack and backpack:FindFirstChild(toolName)
+    if tool and tool:IsA("Tool") then return tool end
+    return nil
+end
+
+local function equipQuestTool(toolName)
+    local tool = findQuestTool(toolName)
+    local character = Player.Character
+    local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+    if not tool or not humanoid then return nil end
+    if tool.Parent ~= character then
+        pcall(function() humanoid:EquipTool(tool) end)
+        task.wait(0.15)
+    end
+    return (character and character:FindFirstChild(toolName)) or tool
+end
+
+local function inventoryContainsSaber(inventory)
+    if type(inventory) ~= "table" then return false end
+    for _, entry in pairs(inventory) do
+        if type(entry) == "table" then
+            local name = entry.Name or entry.name
+            if name == "Saber" then return true end
+        elseif tostring(entry) == "Saber" then
+            return true
+        end
+    end
+    return false
+end
+
+local function playerOwnsSaber()
+    if findQuestTool("Saber") then
+        cachedSaberOwned = true
+        return true
+    end
+    if cachedSaberOwned then return true end
+    if os.clock() - lastSaberInventoryCheck < 5 then return false end
+    lastSaberInventoryCheck = os.clock()
+    local commF = getSaberCommF()
+    if not commF then return false end
+    local ok, inventory = pcall(function()
+        return commF:InvokeServer("getInventoryWeapons")
+    end)
+    cachedSaberOwned = ok and inventoryContainsSaber(inventory) or false
+    return cachedSaberOwned
+end
+
+local function resolveQuestPart(object)
+    if not object then return nil end
+    if object:IsA("BasePart") then return object end
+    if object:IsA("Model") and object.PrimaryPart then return object.PrimaryPart end
+    return object:FindFirstChildWhichIsA("BasePart", true)
+end
+
+local function questPartIsOpen(part)
+    return part and (part.CanCollide == false or part.Transparency >= 0.95)
+end
+
+local function touchQuestPart(part, tool)
+    if not part then return false end
+    local character = Player.Character
+    local rootPart = character and character:FindFirstChild("HumanoidRootPart")
+    if not rootPart then return false end
+    local toolHandle = tool and (tool:FindFirstChild("Handle") or resolveQuestPart(tool))
+    local toucher = toolHandle or rootPart
+    if type(firetouchinterest) == "function" then
+        pcall(function()
+            firetouchinterest(toucher, part, 0)
+            task.wait(0.1)
+            firetouchinterest(toucher, part, 1)
+        end)
+    end
+    pcall(function()
+        rootPart.CFrame = part.CFrame * CFrame.new(0, 2, 0)
+        rootPart.AssemblyLinearVelocity = Vector3.zero
+    end)
+    return true
+end
+
+local function travelSaberQuest(label, targetCFrame)
+    if not _G.AutoSaberQuest or not modeCanMove("saber") then return false end
+    setSaberQuestStatus("Đang đến " .. label)
+    return toTarget(targetCFrame)
+end
+
+local function finishSaberQuest()
+    _G.AutoSaberQuest = false
+    stopFarmMovement()
+    setSaberQuestStatus("Hoàn thành: đã sở hữu Saber; có thể mua Haki Quan Sát khi đủ cấp 300 và 750.000 Beli.")
+    if not saberCompletionNotified then
+        saberCompletionNotified = true
+        notify(
+            "Saber Puzzle hoàn thành",
+            "Đã nhận Saber. Khi đạt cấp 300 và có 750.000 Beli, hãy bấm Mua Haki Quan Sát.",
+            8
+        )
+    end
+end
+
+local function pressJunglePlates(jungle)
+    local plates = jungle and jungle:FindFirstChild("QuestPlates")
+    if not plates then
+        setSaberQuestStatus("Không tìm thấy QuestPlates tại Jungle.")
+        return false
+    end
+    setSaberQuestStatus("Đang kích hoạt 5 nút Jungle")
+    for index = 1, 5 do
+        if not _G.AutoSaberQuest or not modeCanMove("saber") then return false end
+        local plate = plates:FindFirstChild("Plate" .. index)
+        local button = plate and resolveQuestPart(plate:FindFirstChild("Button") or plate)
+        if button then
+            if not toTarget(button.CFrame * CFrame.new(0, 2, 0)) then return false end
+            touchQuestPart(button)
+            task.wait(0.35)
+        end
+    end
+    setSaberQuestStatus("Đã bấm 5 nút; đang chờ cửa bí mật mở")
+    task.wait(0.8)
+    return true
+end
+
+local function handleTorchStage(jungle, desert, burnPart)
+    local torch = findQuestTool("Torch")
+    if not torch then
+        local torchObject = jungle and jungle:FindFirstChild("Torch", true)
+        local torchPart = resolveQuestPart(torchObject)
+        local target = torchPart and (torchPart.CFrame * CFrame.new(0, 2, 0)) or SABER_POINTS.Torch
+        if travelSaberQuest("phòng Torch ở Jungle", target) then
+            touchQuestPart(torchPart)
+            setSaberQuestStatus("Đang nhặt Torch")
+            task.wait(0.6)
+        end
+        return
+    end
+
+    torch = equipQuestTool("Torch")
+    local target = burnPart and (burnPart.CFrame * CFrame.new(0, 2, 0)) or SABER_POINTS.BurnWall
+    if travelSaberQuest("bức tường cháy tại Desert", target) then
+        touchQuestPart(burnPart, torch)
+        setSaberQuestStatus("Đang dùng Torch mở phòng Cup")
+        task.wait(0.8)
+    end
+end
+
+local function handleSickManStage(desert)
+    local cup = findQuestTool("Cup")
+    if not cup then
+        invokeSaberProgress("GetCup")
+        task.wait(0.5)
+        cup = findQuestTool("Cup")
+        if not cup then
+            local cupObject = desert and desert:FindFirstChild("Cup", true)
+            local cupPart = resolveQuestPart(cupObject)
+            local target = cupPart and (cupPart.CFrame * CFrame.new(0, 2, 0)) or SABER_POINTS.BurnWall
+            if travelSaberQuest("Cup trong căn nhà Desert", target) then
+                touchQuestPart(cupPart)
+                setSaberQuestStatus("Đang nhặt Cup")
+                task.wait(0.6)
+            end
+            return
+        end
+    end
+
+    cup = equipQuestTool("Cup")
+    local handle = cup and cup:FindFirstChild("Handle")
+    local cupIsEmpty = handle and (handle:FindFirstChild("TouchInterest")
+        or handle:FindFirstChildOfClass("TouchTransmitter"))
+    if cupIsEmpty then
+        if travelSaberQuest("nguồn nước tại Frozen Village", SABER_POINTS.Water) then
+            local equippedCup = equipQuestTool("Cup")
+            invokeSaberProgress("FillCup", equippedCup)
+            setSaberQuestStatus("Đã lấy nước; chuẩn bị đưa Cup cho Sick Man")
+            task.wait(0.6)
+        end
+        return
+    end
+
+    if travelSaberQuest("Sick Man tại Frozen Village", SABER_POINTS.SickMan) then
+        invokeSaberProgress("SickMan")
+        setSaberQuestStatus("Đã đưa Cup cho Sick Man")
+        task.wait(0.7)
+    end
+end
+
+local function handleRichSonStage(richStatus)
+    if richStatus == 0 or tostring(richStatus) == "0" then
+        local mobLeader = findBoss("Mob Leader")
+        if mobLeader then
+            setSaberQuestStatus("Đang đánh Mob Leader")
+            engageTarget(mobLeader, mobLeader.Name, _G.SelectWeapon)
+        else
+            clearFarmTarget()
+            travelSaberQuest("điểm xuất hiện Mob Leader", SABER_POINTS.MobLeader)
+            setSaberQuestStatus("Đang chờ Mob Leader xuất hiện")
+            task.wait(0.5)
+        end
+        return
+    end
+
+    if travelSaberQuest("Rich Man tại Pirate Village", SABER_POINTS.RichMan) then
+        invokeSaberProgress("RichSon")
+        if richStatus == 1 or tostring(richStatus) == "1" then
+            setSaberQuestStatus("Đã nhận Relic từ Rich Man")
+        else
+            setSaberQuestStatus("Đã nói chuyện với Rich Man")
+        end
+        task.wait(0.7)
+    end
+end
+
+SaberQuest.Step = function()
+    if not _G.AutoSaberQuest then return end
+    if WorldSea ~= 1 then
+        setSaberQuestStatus("Saber Puzzle chỉ thực hiện tại Biển 1.")
+        clearFarmTarget()
+        return
+    end
+    local level = getPlayerLevel()
+    if level < 200 then
+        setSaberQuestStatus("Cần đạt cấp 200 để làm Saber Puzzle; hiện tại cấp " .. level .. ".")
+        clearFarmTarget()
+        return
+    end
+    if playerOwnsSaber() then
+        finishSaberQuest()
+        return
+    end
+
+    local map = workspace:FindFirstChild("Map")
+    local jungle = map and map:FindFirstChild("Jungle")
+    local desert = map and map:FindFirstChild("Desert")
+    if not jungle or not desert then
+        setSaberQuestStatus("Đang chờ bản đồ Jungle và Desert tải xong.")
+        return
+    end
+
+    local finalFolder = jungle:FindFirstChild("Final")
+    local finalPart = finalFolder and resolveQuestPart(finalFolder:FindFirstChild("Part") or finalFolder)
+    if questPartIsOpen(finalPart) then
+        local saberExpert = findBoss("Saber Expert")
+        if saberExpert then
+            setSaberQuestStatus("Đang đánh Saber Expert")
+            engageTarget(saberExpert, saberExpert.Name, _G.SelectWeapon)
+        else
+            clearFarmTarget()
+            travelSaberQuest("phòng Saber Expert", SABER_POINTS.SaberExpert)
+            setSaberQuestStatus("Đang chờ Saber Expert xuất hiện")
+            task.wait(0.5)
+        end
+        return
+    end
+
+    local relic = findQuestTool("Relic")
+    if relic then
+        relic = equipQuestTool("Relic")
+        if travelSaberQuest("khe đặt Relic tại Jungle", SABER_POINTS.RelicSlot) then
+            touchQuestPart(finalPart, relic)
+            invokeSaberProgress("PlaceRelic")
+            setSaberQuestStatus("Đã đặt Relic; đang chờ phòng Saber Expert mở")
+            task.wait(0.8)
+        end
+        return
+    end
+
+    local plates = jungle:FindFirstChild("QuestPlates")
+    local plateDoor = plates and resolveQuestPart(plates:FindFirstChild("Door"))
+    if not questPartIsOpen(plateDoor) then
+        if not travelSaberQuest("khu nút Jungle", SABER_POINTS.JungleStart) then return end
+        pressJunglePlates(jungle)
+        return
+    end
+
+    local burnFolder = desert:FindFirstChild("Burn")
+    local burnPart = burnFolder and resolveQuestPart(burnFolder:FindFirstChild("Part") or burnFolder)
+    if not questPartIsOpen(burnPart) then
+        handleTorchStage(jungle, desert, burnPart)
+        return
+    end
+
+    local sickOk, sickStatus = invokeSaberProgress("SickMan")
+    if not sickOk then
+        setSaberQuestStatus("Không đọc được tiến độ Sick Man: " .. tostring(sickStatus))
+        task.wait(1)
+        return
+    end
+    if sickStatus ~= 0 and tostring(sickStatus) ~= "0" then
+        handleSickManStage(desert)
+        return
+    end
+
+    local richOk, richStatus = invokeSaberProgress("RichSon")
+    if not richOk then
+        setSaberQuestStatus("Không đọc được tiến độ Rich Man: " .. tostring(richStatus))
+        task.wait(1)
+        return
+    end
+    handleRichSonStage(richStatus)
+end
+
+SaberQuest.GetStatus = function()
+    return lastSaberQuestStatus
+end
+
+SaberQuest.PrepareStart = function()
+    saberCompletionNotified = false
+    cachedSaberOwned = false
+    lastSaberInventoryCheck = -math.huge
+    setSaberQuestStatus("Đang kiểm tra tiến độ Saber Puzzle")
 end
 end
 
@@ -3094,6 +3941,16 @@ end
 -- PHẦN 6: VÒNG LẶP NỀN (BACKGROUND LOOPS)
 ------------------------------------------------------------
 
+-- ====== LOOP 0: Tự động làm Saber Puzzle ======
+task.spawn(function()
+    while RuntimeEnv.HAOTOOL_RUN_TOKEN == CurrentRunToken do
+        task.wait(0.2)
+        if _G.AutoSaberQuest and modeCanMove("saber") then
+            runFeature("Saber Puzzle", SaberQuest.Step)
+        end
+    end
+end)
+
 -- ====== LOOP 1: Auto Farm Level ======
 local lastFarmStatus = "Chờ bật Auto Farm Level"
 task.spawn(function()
@@ -3103,6 +3960,12 @@ task.spawn(function()
         if _G.AutoFarmLevel and modeCanMove("level") then
             runFeature("Auto Farm Level", function()
                 local level = getPlayerLevel()
+                if Sea2Quest.ShouldRun(level) then
+                    Sea2Quest.Step()
+                    lastFarmStatus = Sea2Quest.GetStatus()
+                    return
+                end
+
                 local quest = getQuestData(level)
                 local method = _G.FarmMethod or "Quest"
                 if not quest then
@@ -3359,12 +4222,18 @@ task.spawn(function()
                     local handle = getFruitHandle(fruit)
                     if fruit and handle and modeCanMove("fruit") then
                         lastFruitStatus = "Đang nhặt " .. fruit.Name
-                        toTarget(handle.CFrame * CFrame.new(0, 2, 0))
-                        task.wait(0.12)
-                        touchFruit(fruit)
+                        local arrived = moveToFruitSafely(fruit, false, function(status)
+                            lastFruitStatus = status
+                        end)
+                        if arrived then
+                            task.wait(0.12)
+                            touchFruit(fruit)
+                        end
                         if not fruit.Parent or not getFruitHandle(fruit) then
                             activeFruitTarget = nil
                             lastFruitStatus = "Đã nhặt " .. fruit.Name
+                        elseif not arrived then
+                            lastFruitStatus = "Di chuyển tới " .. fruit.Name .. " bị gián đoạn"
                         end
                     elseif not fruit then
                         activeFruitTarget = nil
@@ -4286,7 +5155,7 @@ end
 
 FarmCoreSection:AddToggle("AutoFarmLevel", {
     Title = "Tự động luyện cấp",
-    Description = "Tự động nhận nhiệm vụ → đánh quái → lên cấp",
+    Description = "Tự động nhận nhiệm vụ → đánh quái → lên cấp; đạt cấp 700 sẽ tự mở và qua Biển 2",
     Default = _G.AutoFarmLevel,
     Callback = function(v)
         _G.AutoFarmLevel = v
@@ -4665,7 +5534,7 @@ FruitAutoSection:AddToggle("AutoFindFruitToggle", {
 
 FruitAutoSection:AddToggle("AutoCollectFruitToggle", {
     Title = "Tự động nhặt Trái",
-    Description = "Ưu tiên bay tới nhặt Trái, sau đó tự quay lại luyện cấp",
+    Description = "Nếu đang dưới biển: nổi lên, ghé bờ rồi mới bay tới Trái; sau đó quay lại luyện cấp",
     Default = _G.AutoCollectFruit,
     Callback = function(v)
         local wasFruitMode = getActiveMovementMode() == "fruit"
@@ -5002,8 +5871,8 @@ FruitTeleportSection:AddButton({
         local closestFruit = findNearestFruit()
         local handle = getFruitHandle(closestFruit)
         if closestFruit and handle then
-            notify("Dịch chuyển Trái", "Đang bay tới " .. closestFruit.Name, 3)
-            local arrived = manualTeleportTo(handle.CFrame * CFrame.new(0, 2, 0))
+            notify("Dịch chuyển Trái", "Đang kiểm tra đường đi tới " .. closestFruit.Name, 3)
+            local arrived = moveToFruitSafely(closestFruit, true)
             notify(arrived and "✅ Đã đến trái" or "⚠️ Di chuyển bị gián đoạn", closestFruit.Name, 2)
         else
             notify("❌", "Không tìm thấy trái trên map", 2)
@@ -5076,6 +5945,36 @@ CombatAutoSection:AddToggle("AutoDodgeToggle", {
     Description = "Tự động né tránh đạn/đòn đánh",
     Default = _G.AutoDodge,
     Callback = function(v) _G.AutoDodge = v end,
+})
+
+local SaberQuestSection = CombatTab:AddSection("Saber Puzzle & Haki Quan Sát")
+
+SaberQuestSection:AddToggle("AutoSaberQuestToggle", {
+    Title = "Tự động làm nhiệm vụ lấy Saber",
+    Description = "Dành cho Biển 1, cấp 200 trở lên; tự làm puzzle, đánh Mob Leader và Saber Expert.",
+    Default = _G.AutoSaberQuest,
+    Callback = function(v)
+        _G.AutoSaberQuest = v
+        stopFarmMovement()
+        if v then
+            SaberQuest.PrepareStart()
+            notify(
+                "Saber Puzzle",
+                "Đã bắt đầu. Tính năng Saber được ưu tiên di chuyển hơn các chế độ Auto Farm khác.",
+                6
+            )
+        else
+            notify("Saber Puzzle", "Đã dừng: " .. SaberQuest.GetStatus(), 4)
+        end
+    end,
+})
+
+SaberQuestSection:AddButton({
+    Title = "Xem tiến độ Saber hiện tại",
+    Description = "Hiển thị bước mà hệ thống đang thực hiện hoặc điều kiện còn thiếu.",
+    Callback = function()
+        notify("Tiến độ Saber Puzzle", SaberQuest.GetStatus(), 7)
+    end,
 })
 
 local CombatShopSection = CombatTab:AddSection("Cửa hàng phong cách cận chiến")
