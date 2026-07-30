@@ -1,8 +1,8 @@
 --[[
     ================================================================================
-    ⚡ ANTIGRAVITY HUB | BLOX FRUITS (MOBILE TOUCH OPTIMIZED ENGINE)
+    ⚡ HAOTOOL HUB | BLOX FRUITS (MOBILE TOUCH OPTIMIZED ENGINE)
     --------------------------------------------------------------------------------
-    Developer: Antigravity Team
+    Developer: HAOTOOL Team
     Special Feature: 100% Touch-Responsive UI (Sửa dứt điểm lỗi không bấm được tab/nút)
     Executors Supported: Delta, Fluxus, Solara, Wave, CodeX, Hydrogen, Arceus X, Synapse
     ================================================================================
@@ -108,19 +108,19 @@ end
 
 -- ==================== GIAO DIỆN TOUCH-FRIENDLY GUI ENGINE ====================
 local GuiParent = CoreGui:FindFirstChild("RobloxGui") or Player:WaitForChild("PlayerGui")
-if GuiParent:FindFirstChild("AntigravityHubGUI") then
-    GuiParent.AntigravityHubGUI:Destroy()
+if GuiParent:FindFirstChild("HaoToolGUI") then
+    GuiParent.HaoToolGUI:Destroy()
 end
 
 local ScreenGui = Instance.new("ScreenGui")
-ScreenGui.Name = "AntigravityHubGUI"
+ScreenGui.Name = "HaoToolGUI"
 ScreenGui.ResetOnSpawn = false
 ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 ScreenGui.Parent = GuiParent
 
--- 1. NÚT TRÒN NỔI CHO MOBILE (AG BUTTON)
+-- 1. NÚT TRÒN NỔI CHO MOBILE (HAO BUTTON)
 local MobileToggleBtn = Instance.new("Frame")
-MobileToggleBtn.Name = "AGMobileToggle"
+MobileToggleBtn.Name = "HaoToolMobileToggle"
 MobileToggleBtn.Size = UDim2.new(0, 52, 0, 52)
 MobileToggleBtn.Position = UDim2.new(0.02, 0, 0.2, 0)
 MobileToggleBtn.BackgroundColor3 = Color3.fromRGB(15, 23, 42)
@@ -139,10 +139,10 @@ ToggleStroke.Parent = MobileToggleBtn
 local ToggleLabel = Instance.new("TextLabel")
 ToggleLabel.Size = UDim2.new(1, 0, 1, 0)
 ToggleLabel.BackgroundTransparency = 1
-ToggleLabel.Text = "AG"
+ToggleLabel.Text = "HAO"
 ToggleLabel.TextColor3 = Color3.fromRGB(6, 182, 212)
 ToggleLabel.Font = Enum.Font.FredokaOne
-ToggleLabel.TextSize = 22
+ToggleLabel.TextSize = 18
 ToggleLabel.Parent = MobileToggleBtn
 
 -- Kéo thả nút mobile
@@ -201,7 +201,7 @@ local TitleLabel = Instance.new("TextLabel")
 TitleLabel.Size = UDim2.new(0.7, 0, 1, 0)
 TitleLabel.Position = UDim2.new(0, 15, 0, 0)
 TitleLabel.BackgroundTransparency = 1
-TitleLabel.Text = "⚡ ANTIGRAVITY HUB | BLOX FRUITS"
+TitleLabel.Text = "⚡ HAOTOOL | BLOX FRUITS"
 TitleLabel.TextColor3 = Color3.fromRGB(6, 182, 212)
 TitleLabel.Font = Enum.Font.FredokaOne
 TitleLabel.TextSize = 16
