@@ -89,7 +89,14 @@ _G.AutoFarmFragment  = false
 _G.SelectWeapon      = "Melee"
 _G.FarmMethod        = "Quest"
 _G.SelectedMob       = ""
-_G.BringMob          = false
+_G.BringMob          = true
+_G.BringRadius       = 300
+_G.FarmHeight        = 8
+_G.FarmDistance      = 0
+_G.HoldFarmPosition  = true
+_G.FreezeTarget      = true
+_G.AttackDelay       = 0.08
+_G.HitboxSize        = 12
 _G.AutoSkill         = false
 _G.SkillCooldown     = 1.5
 
@@ -228,79 +235,105 @@ end
 
 -- ==================== QUEST DATA — SEA 1 (Lv 1–700) ====================
 local QuestsSea1 = {
-    {MinLevel=1,   MaxLevel=9,   QuestName="BanditQuest1",  QuestNumber=1, MobName="Bandit",             QuestNpc=Vector3.new(1059,15,1549),    MobPosition=Vector3.new(1038,16,1621)},
-    {MinLevel=10,  MaxLevel=14,  QuestName="MonkeyQuest",   QuestNumber=1, MobName="Monkey",             QuestNpc=Vector3.new(-1598,36,153),    MobPosition=Vector3.new(-1610,36,142)},
-    {MinLevel=15,  MaxLevel=29,  QuestName="MonkeyQuest",   QuestNumber=2, MobName="Gorilla",            QuestNpc=Vector3.new(-1598,36,153),    MobPosition=Vector3.new(-1243,6,-493)},
-    {MinLevel=30,  MaxLevel=39,  QuestName="PirateQuest",   QuestNumber=1, MobName="Pirate",             QuestNpc=Vector3.new(-1141,4,3896),    MobPosition=Vector3.new(-1203,4,3915)},
-    {MinLevel=40,  MaxLevel=59,  QuestName="PirateQuest",   QuestNumber=2, MobName="Brute",              QuestNpc=Vector3.new(-1141,4,3896),    MobPosition=Vector3.new(-1145,14,4300)},
-    {MinLevel=60,  MaxLevel=89,  QuestName="DesertQuest",   QuestNumber=1, MobName="Desert Bandit",      QuestNpc=Vector3.new(894,6,4390),      MobPosition=Vector3.new(996,6,4363)},
-    {MinLevel=90,  MaxLevel=99,  QuestName="DesertQuest",   QuestNumber=2, MobName="Desert Officer",     QuestNpc=Vector3.new(894,6,4390),      MobPosition=Vector3.new(1582,10,4370)},
-    {MinLevel=100, MaxLevel=119, QuestName="SnowQuest",     QuestNumber=1, MobName="Snow Bandit",        QuestNpc=Vector3.new(1385,15,-4740),   MobPosition=Vector3.new(1313,26,-4641)},
-    {MinLevel=120, MaxLevel=149, QuestName="SnowQuest",     QuestNumber=2, MobName="Snowman",            QuestNpc=Vector3.new(1385,15,-4740),   MobPosition=Vector3.new(1250,26,-4580)},
-    {MinLevel=150, MaxLevel=174, QuestName="MarineQuest2",  QuestNumber=1, MobName="Marine Commodore",   QuestNpc=Vector3.new(-5036,24,4317),   MobPosition=Vector3.new(-4940,72,4260)},
-    {MinLevel=175, MaxLevel=189, QuestName="SkyQuest",      QuestNumber=1, MobName="Sky Bandit",         QuestNpc=Vector3.new(-4839,717,-2620), MobPosition=Vector3.new(-4950,717,-2620)},
-    {MinLevel=190, MaxLevel=209, QuestName="SkyQuest",      QuestNumber=2, MobName="Dark Master",        QuestNpc=Vector3.new(-4839,717,-2620), MobPosition=Vector3.new(-5250,390,-2250)},
-    {MinLevel=210, MaxLevel=249, QuestName="PrisonerQuest", QuestNumber=1, MobName="Prisoner",           QuestNpc=Vector3.new(4875,5,735),      MobPosition=Vector3.new(4940,5,800)},
-    {MinLevel=250, MaxLevel=274, QuestName="PrisonerQuest", QuestNumber=2, MobName="Dangerous Prisoner", QuestNpc=Vector3.new(4875,5,735),      MobPosition=Vector3.new(5060,5,890)},
-    {MinLevel=275, MaxLevel=299, QuestName="ColosseumQuest",QuestNumber=1, MobName="Toga Warrior",       QuestNpc=Vector3.new(-1516,7,-2994),   MobPosition=Vector3.new(-1800,7,-3000)},
-    {MinLevel=300, MaxLevel=329, QuestName="MagmaQuest",    QuestNumber=1, MobName="Military Soldier",   QuestNpc=Vector3.new(-5241,8,8504),    MobPosition=Vector3.new(-5400,8,8500)},
-    {MinLevel=330, MaxLevel=374, QuestName="MagmaQuest",    QuestNumber=2, MobName="Military Spy",       QuestNpc=Vector3.new(-5241,8,8504),    MobPosition=Vector3.new(-5800,8,8800)},
-    {MinLevel=375, MaxLevel=399, QuestName="FishmanQuest",  QuestNumber=1, MobName="Fishman Warrior",    QuestNpc=Vector3.new(61163,11,1819),   MobPosition=Vector3.new(60800,18,1500)},
-    {MinLevel=400, MaxLevel=449, QuestName="FishmanQuest",  QuestNumber=2, MobName="Fishman Commando",   QuestNpc=Vector3.new(61163,11,1819),   MobPosition=Vector3.new(61800,18,1500)},
-    {MinLevel=450, MaxLevel=474, QuestName="SkyExp1Quest",  QuestNumber=1, MobName="God's Guard",        QuestNpc=Vector3.new(-4720,845,-1950), MobPosition=Vector3.new(-4700,845,-1900)},
-    {MinLevel=475, MaxLevel=524, QuestName="SkyExp1Quest",  QuestNumber=2, MobName="Shanda",             QuestNpc=Vector3.new(-4720,845,-1950), MobPosition=Vector3.new(-7700,5600,-1800)},
-    {MinLevel=525, MaxLevel=549, QuestName="SkyExp2Quest",  QuestNumber=1, MobName="Royal Squad",        QuestNpc=Vector3.new(-7900,5600,-1800),MobPosition=Vector3.new(-7600,5600,-1400)},
-    {MinLevel=550, MaxLevel=624, QuestName="SkyExp2Quest",  QuestNumber=2, MobName="Royal Soldier",      QuestNpc=Vector3.new(-7900,5600,-1800),MobPosition=Vector3.new(-7800,5600,-1600)},
-    {MinLevel=625, MaxLevel=649, QuestName="FountainQuest", QuestNumber=1, MobName="Galley Pirate",      QuestNpc=Vector3.new(5121,5,4110),     MobPosition=Vector3.new(5500,5,4000)},
-    {MinLevel=650, MaxLevel=700, QuestName="FountainQuest", QuestNumber=2, MobName="Galley Captain",     QuestNpc=Vector3.new(5121,5,4110),     MobPosition=Vector3.new(5600,5,4400)},
+    {MinLevel=1, MaxLevel=9, QuestName="BanditQuest1", QuestNumber=1, MobName="Bandit", QuestNpc=Vector3.new(1059.372,15.450,1550.423), MobPosition=Vector3.new(1045.963,27.003,1560.820)},
+    {MinLevel=10, MaxLevel=14, QuestName="JungleQuest", QuestNumber=1, MobName="Monkey", QuestNpc=Vector3.new(-1598.089,35.550,153.378), MobPosition=Vector3.new(-1448.518,67.853,11.466)},
+    {MinLevel=15, MaxLevel=29, QuestName="JungleQuest", QuestNumber=2, MobName="Gorilla", QuestNpc=Vector3.new(-1598.089,35.550,153.378), MobPosition=Vector3.new(-1129.884,40.464,-525.424)},
+    {MinLevel=30, MaxLevel=39, QuestName="BuggyQuest1", QuestNumber=1, MobName="Pirate", QuestNpc=Vector3.new(-1141.075,4.100,3831.550), MobPosition=Vector3.new(-1201.084,40.629,3857.598)},
+    {MinLevel=40, MaxLevel=59, QuestName="BuggyQuest1", QuestNumber=2, MobName="Brute", QuestNpc=Vector3.new(-1141.075,4.100,3831.550), MobPosition=Vector3.new(-1146.497,96.094,4312.138)},
+    {MinLevel=60, MaxLevel=74, QuestName="DesertQuest", QuestNumber=1, MobName="Desert Bandit", QuestNpc=Vector3.new(894.489,5.140,4392.434), MobPosition=Vector3.new(924.800,6.449,4481.586)},
+    {MinLevel=75, MaxLevel=89, QuestName="DesertQuest", QuestNumber=2, MobName="Desert Officer", QuestNpc=Vector3.new(894.489,5.140,4392.434), MobPosition=Vector3.new(1547.151,14.452,4381.800)},
+    {MinLevel=90, MaxLevel=99, QuestName="SnowQuest", QuestNumber=1, MobName="Snow Bandit", QuestNpc=Vector3.new(1389.745,88.152,-1298.908), MobPosition=Vector3.new(1354.348,87.273,-1393.947)},
+    {MinLevel=100, MaxLevel=119, QuestName="SnowQuest", QuestNumber=2, MobName="Snowman", QuestNpc=Vector3.new(1389.745,88.152,-1298.908), MobPosition=Vector3.new(1201.641,144.580,-1550.067)},
+    {MinLevel=120, MaxLevel=149, QuestName="MarineQuest2", QuestNumber=1, MobName="Chief Petty Officer", QuestNpc=Vector3.new(-5039.586,27.350,4324.680), MobPosition=Vector3.new(-4881.231,22.652,4273.752)},
+    {MinLevel=150, MaxLevel=174, QuestName="SkyQuest", QuestNumber=1, MobName="Sky Bandit", QuestNpc=Vector3.new(-4839.530,716.369,-2619.442), MobPosition=Vector3.new(-4953.207,295.744,-2899.229)},
+    {MinLevel=175, MaxLevel=189, QuestName="SkyQuest", QuestNumber=2, MobName="Dark Master", QuestNpc=Vector3.new(-4839.530,716.369,-2619.442), MobPosition=Vector3.new(-5259.845,391.398,-2229.035)},
+    {MinLevel=190, MaxLevel=209, QuestName="PrisonerQuest", QuestNumber=1, MobName="Prisoner", QuestNpc=Vector3.new(5308.931,1.655,475.121), MobPosition=Vector3.new(5098.974,-0.320,474.237)},
+    {MinLevel=210, MaxLevel=249, QuestName="PrisonerQuest", QuestNumber=2, MobName="Dangerous Prisoner", QuestNpc=Vector3.new(5308.931,1.655,475.121), MobPosition=Vector3.new(5654.563,15.633,866.299)},
+    {MinLevel=250, MaxLevel=274, QuestName="ColosseumQuest", QuestNumber=1, MobName="Toga Warrior", QuestNpc=Vector3.new(-1580.047,6.350,-2986.475), MobPosition=Vector3.new(-1820.215,51.684,-2740.665)},
+    {MinLevel=275, MaxLevel=299, QuestName="ColosseumQuest", QuestNumber=2, MobName="Gladiator", QuestNpc=Vector3.new(-1580.047,6.350,-2986.475), MobPosition=Vector3.new(-1292.838,56.381,-3339.031)},
+    {MinLevel=300, MaxLevel=324, QuestName="MagmaQuest", QuestNumber=1, MobName="Military Soldier", QuestNpc=Vector3.new(-5313.370,10.950,8515.294), MobPosition=Vector3.new(-5411.165,11.082,8454.293)},
+    {MinLevel=325, MaxLevel=374, QuestName="MagmaQuest", QuestNumber=2, MobName="Military Spy", QuestNpc=Vector3.new(-5313.370,10.950,8515.294), MobPosition=Vector3.new(-5802.868,86.262,8828.859)},
+    {MinLevel=375, MaxLevel=399, QuestName="FishmanQuest", QuestNumber=1, MobName="Fishman Warrior", QuestNpc=Vector3.new(61122.652,18.497,1569.400), MobPosition=Vector3.new(60878.301,18.483,1543.757), Entrance=Vector3.new(61163.852,11.680,1819.785)},
+    {MinLevel=400, MaxLevel=449, QuestName="FishmanQuest", QuestNumber=2, MobName="Fishman Commando", QuestNpc=Vector3.new(61122.652,18.497,1569.400), MobPosition=Vector3.new(61922.633,18.483,1493.934), Entrance=Vector3.new(61163.852,11.680,1819.785)},
+    {MinLevel=450, MaxLevel=474, QuestName="SkyExp1Quest", QuestNumber=1, MobName="God's Guard", QuestNpc=Vector3.new(-4721.889,843.875,-1949.966), MobPosition=Vector3.new(-4710.043,845.277,-1927.308), Entrance=Vector3.new(-4607.823,872.542,-1667.557)},
+    {MinLevel=475, MaxLevel=524, QuestName="SkyExp1Quest", QuestNumber=2, MobName="Shanda", QuestNpc=Vector3.new(-7859.098,5544.190,-381.476), MobPosition=Vector3.new(-7678.490,5566.404,-497.216), Entrance=Vector3.new(-7894.618,5547.142,-380.291)},
+    {MinLevel=525, MaxLevel=549, QuestName="SkyExp2Quest", QuestNumber=1, MobName="Royal Squad", QuestNpc=Vector3.new(-7906.816,5634.663,-1411.992), MobPosition=Vector3.new(-7624.252,5658.133,-1467.354), Entrance=Vector3.new(-7894.618,5547.142,-380.291)},
+    {MinLevel=550, MaxLevel=624, QuestName="SkyExp2Quest", QuestNumber=2, MobName="Royal Soldier", QuestNpc=Vector3.new(-7906.816,5634.663,-1411.992), MobPosition=Vector3.new(-7836.753,5645.664,-1790.623), Entrance=Vector3.new(-7894.618,5547.142,-380.291)},
+    {MinLevel=625, MaxLevel=649, QuestName="FountainQuest", QuestNumber=1, MobName="Galley Pirate", QuestNpc=Vector3.new(5259.820,37.350,4050.029), MobPosition=Vector3.new(5551.022,78.901,3930.413)},
+    {MinLevel=650, MaxLevel=math.huge, QuestName="FountainQuest", QuestNumber=2, MobName="Galley Captain", QuestNpc=Vector3.new(5259.820,37.350,4050.029), MobPosition=Vector3.new(5441.952,42.502,4950.094)},
 }
 
--- ==================== QUEST DATA — SEA 2 (Lv 700–1500) ====================
--- Lưu ý: Tọa độ có thể lệch vài đơn vị, script sẽ tự tween tới
 local QuestsSea2 = {
-    {MinLevel=700,  MaxLevel=724,  QuestName="Area1Quest",       QuestNumber=1, MobName="Swan Pirate",         QuestNpc=Vector3.new(-432,73,299),       MobPosition=Vector3.new(-545,72,302)},
-    {MinLevel=725,  MaxLevel=774,  QuestName="Area1Quest",       QuestNumber=2, MobName="Factory Staff",       QuestNpc=Vector3.new(-432,73,299),       MobPosition=Vector3.new(-410,72,280)},
-    {MinLevel=775,  MaxLevel=799,  QuestName="Area2Quest",       QuestNumber=1, MobName="Marine Lieutenant",   QuestNpc=Vector3.new(-1189,6,371),       MobPosition=Vector3.new(-1250,6,430)},
-    {MinLevel=800,  MaxLevel=849,  QuestName="Area2Quest",       QuestNumber=2, MobName="Marine Captain",      QuestNpc=Vector3.new(-1189,6,371),       MobPosition=Vector3.new(-1300,6,350)},
-    {MinLevel=850,  MaxLevel=899,  QuestName="GreenZoneQuest",   QuestNumber=1, MobName="Zombie",              QuestNpc=Vector3.new(-2410,73,-3222),    MobPosition=Vector3.new(-2356,73,-3187)},
-    {MinLevel=900,  MaxLevel=949,  QuestName="GreenZoneQuest",   QuestNumber=2, MobName="Vampire",             QuestNpc=Vector3.new(-2410,73,-3222),    MobPosition=Vector3.new(-2520,73,-3130)},
-    {MinLevel=950,  MaxLevel=999,  QuestName="GraveyardQuest",   QuestNumber=1, MobName="Zombie",              QuestNpc=Vector3.new(-5465,87,-782),     MobPosition=Vector3.new(-5530,87,-890)},
-    {MinLevel=1000, MaxLevel=1049, QuestName="SnowMountainQuest",QuestNumber=1, MobName="Snow Trooper",        QuestNpc=Vector3.new(609,400,-5765),     MobPosition=Vector3.new(550,400,-5800)},
-    {MinLevel=1050, MaxLevel=1099, QuestName="SnowMountainQuest",QuestNumber=2, MobName="Winter Warrior",      QuestNpc=Vector3.new(609,400,-5765),     MobPosition=Vector3.new(480,400,-5860)},
-    {MinLevel=1100, MaxLevel=1124, QuestName="IceSideQuest",     QuestNumber=1, MobName="Ice Castle Warrior",  QuestNpc=Vector3.new(6125,252,-4902),    MobPosition=Vector3.new(6200,252,-4950)},
-    {MinLevel=1125, MaxLevel=1174, QuestName="IceSideQuest",     QuestNumber=2, MobName="Ice Castle King",     QuestNpc=Vector3.new(6125,252,-4902),    MobPosition=Vector3.new(6050,252,-4980)},
-    {MinLevel=1175, MaxLevel=1249, QuestName="ForgottenQuest",   QuestNumber=1, MobName="Forgotten Island NPC",QuestNpc=Vector3.new(-3053,236,-10197),  MobPosition=Vector3.new(-3100,236,-10250)},
-    {MinLevel=1250, MaxLevel=1299, QuestName="MansionQuest",     QuestNumber=1, MobName="Reborn Skeleton",     QuestNpc=Vector3.new(-4545,82,-691),     MobPosition=Vector3.new(-4600,82,-750)},
-    {MinLevel=1300, MaxLevel=1324, QuestName="MansionQuest",     QuestNumber=2, MobName="Living Zombie",       QuestNpc=Vector3.new(-4545,82,-691),     MobPosition=Vector3.new(-4480,82,-640)},
-    {MinLevel=1325, MaxLevel=1349, QuestName="CakeQuest",        QuestNumber=1, MobName="Cookie Crafter",      QuestNpc=Vector3.new(-856,8,-11221),     MobPosition=Vector3.new(-900,8,-11280)},
-    {MinLevel=1350, MaxLevel=1374, QuestName="CakeQuest",        QuestNumber=2, MobName="Cake Guard",          QuestNpc=Vector3.new(-856,8,-11221),     MobPosition=Vector3.new(-780,8,-11150)},
-    {MinLevel=1375, MaxLevel=1424, QuestName="CakeQuest",        QuestNumber=3, MobName="Biscuit Soldier",     QuestNpc=Vector3.new(-856,8,-11221),     MobPosition=Vector3.new(-950,8,-11350)},
-    {MinLevel=1425, MaxLevel=1474, QuestName="CakeQuest",        QuestNumber=4, MobName="Chocolate Milk",      QuestNpc=Vector3.new(-856,8,-11221),     MobPosition=Vector3.new(-820,8,-11400)},
-    {MinLevel=1475, MaxLevel=1500, QuestName="CakeQuest",        QuestNumber=5, MobName="Candy Rebel",         QuestNpc=Vector3.new(-856,8,-11221),     MobPosition=Vector3.new(-750,8,-11100)},
+    {MinLevel=700, MaxLevel=724, QuestName="Area1Quest", QuestNumber=1, MobName="Raider", QuestNpc=Vector3.new(-429.544,71.770,1836.182), MobPosition=Vector3.new(-728.327,52.779,2345.771)},
+    {MinLevel=725, MaxLevel=774, QuestName="Area1Quest", QuestNumber=2, MobName="Mercenary", QuestNpc=Vector3.new(-429.544,71.770,1836.182), MobPosition=Vector3.new(-1004.324,80.159,1424.619)},
+    {MinLevel=775, MaxLevel=799, QuestName="Area2Quest", QuestNumber=1, MobName="Swan Pirate", QuestNpc=Vector3.new(638.438,71.770,918.283), MobPosition=Vector3.new(1065.367,137.640,1324.380)},
+    {MinLevel=800, MaxLevel=874, QuestName="Area2Quest", QuestNumber=2, MobName="Factory Staff", QuestNpc=Vector3.new(638.438,71.770,918.283), MobPosition=Vector3.new(296.793,72.995,-57.149)},
+    {MinLevel=875, MaxLevel=899, QuestName="MarineQuest3", QuestNumber=1, MobName="Marine Lieutenant", QuestNpc=Vector3.new(-2440.796,71.714,-3216.068), MobPosition=Vector3.new(-2821.372,75.897,-3070.089)},
+    {MinLevel=900, MaxLevel=949, QuestName="MarineQuest3", QuestNumber=2, MobName="Marine Captain", QuestNpc=Vector3.new(-2440.796,71.714,-3216.068), MobPosition=Vector3.new(-1861.235,80.172,-3254.669)},
+    {MinLevel=950, MaxLevel=974, QuestName="ZombieQuest", QuestNumber=1, MobName="Zombie", QuestNpc=Vector3.new(-5497.062,47.592,-795.237), MobPosition=Vector3.new(-5657.777,78.970,-928.687)},
+    {MinLevel=975, MaxLevel=999, QuestName="ZombieQuest", QuestNumber=2, MobName="Vampire", QuestNpc=Vector3.new(-5497.062,47.592,-795.237), MobPosition=Vector3.new(-6037.668,32.185,-1340.660)},
+    {MinLevel=1000, MaxLevel=1049, QuestName="SnowMountainQuest", QuestNumber=1, MobName="Snow Trooper", QuestNpc=Vector3.new(609.859,400.120,-5372.259), MobPosition=Vector3.new(549.147,427.387,-5563.699)},
+    {MinLevel=1050, MaxLevel=1099, QuestName="SnowMountainQuest", QuestNumber=2, MobName="Winter Warrior", QuestNpc=Vector3.new(609.859,400.120,-5372.259), MobPosition=Vector3.new(1142.745,475.665,-5199.417)},
+    {MinLevel=1100, MaxLevel=1124, QuestName="IceSideQuest", QuestNumber=1, MobName="Lab Subordinate", QuestNpc=Vector3.new(-6064.069,15.242,-4902.979), MobPosition=Vector3.new(-5707.472,56.656,-4517.424)},
+    {MinLevel=1125, MaxLevel=1174, QuestName="IceSideQuest", QuestNumber=2, MobName="Horned Warrior", QuestNpc=Vector3.new(-6064.069,15.242,-4902.979), MobPosition=Vector3.new(-6298.242,83.999,-5575.932)},
+    {MinLevel=1175, MaxLevel=1199, QuestName="FireSideQuest", QuestNumber=1, MobName="Magma Ninja", QuestNpc=Vector3.new(-5428.032,15.062,-5299.435), MobPosition=Vector3.new(-5466.911,75.151,-5856.288)},
+    {MinLevel=1200, MaxLevel=1249, QuestName="FireSideQuest", QuestNumber=2, MobName="Lava Pirate", QuestNpc=Vector3.new(-5428.032,15.062,-5299.435), MobPosition=Vector3.new(-5251.189,51.284,-4774.408)},
+    {MinLevel=1250, MaxLevel=1274, QuestName="ShipQuest1", QuestNumber=1, MobName="Ship Deckhand", QuestNpc=Vector3.new(1037.801,125.092,32911.602), MobPosition=Vector3.new(1212.011,150.792,33059.246), Entrance=Vector3.new(923.213,126.976,32852.832)},
+    {MinLevel=1275, MaxLevel=1299, QuestName="ShipQuest1", QuestNumber=2, MobName="Ship Engineer", QuestNpc=Vector3.new(1037.801,125.092,32911.602), MobPosition=Vector3.new(919.479,43.544,32779.969), Entrance=Vector3.new(923.213,126.976,32852.832)},
+    {MinLevel=1300, MaxLevel=1324, QuestName="ShipQuest2", QuestNumber=1, MobName="Ship Steward", QuestNpc=Vector3.new(968.810,125.092,33244.125), MobPosition=Vector3.new(919.439,129.556,33436.035), Entrance=Vector3.new(923.213,126.976,32852.832)},
+    {MinLevel=1325, MaxLevel=1349, QuestName="ShipQuest2", QuestNumber=2, MobName="Ship Officer", QuestNpc=Vector3.new(968.810,125.092,33244.125), MobPosition=Vector3.new(1036.018,181.439,33315.727), Entrance=Vector3.new(923.213,126.976,32852.832)},
+    {MinLevel=1350, MaxLevel=1374, QuestName="FrostQuest", QuestNumber=1, MobName="Arctic Warrior", QuestNpc=Vector3.new(5667.658,26.800,-6486.090), MobPosition=Vector3.new(5966.246,62.970,-6179.383)},
+    {MinLevel=1375, MaxLevel=1424, QuestName="FrostQuest", QuestNumber=2, MobName="Snow Lurker", QuestNpc=Vector3.new(5667.658,26.800,-6486.090), MobPosition=Vector3.new(5407.074,69.194,-6880.880)},
+    {MinLevel=1425, MaxLevel=1449, QuestName="ForgottenQuest", QuestNumber=1, MobName="Sea Soldier", QuestNpc=Vector3.new(-3054.445,235.544,-10142.819), MobPosition=Vector3.new(-3185.510,58.789,-9663.635)},
+    {MinLevel=1450, MaxLevel=math.huge, QuestName="ForgottenQuest", QuestNumber=2, MobName="Water Fighter", QuestNpc=Vector3.new(-3054.445,235.544,-10142.819), MobPosition=Vector3.new(-3262.930,298.690,-10551.584)},
 }
 
--- ==================== QUEST DATA — SEA 3 (Lv 1500–2550+) ====================
 local QuestsSea3 = {
-    {MinLevel=1500, MaxLevel=1524, QuestName="PortQuest",        QuestNumber=1, MobName="Pirate Millionaire",  QuestNpc=Vector3.new(-290,42,5358),     MobPosition=Vector3.new(-350,42,5420)},
-    {MinLevel=1525, MaxLevel=1574, QuestName="PortQuest",        QuestNumber=2, MobName="Pistol Billionaire",  QuestNpc=Vector3.new(-290,42,5358),     MobPosition=Vector3.new(-220,42,5300)},
-    {MinLevel=1575, MaxLevel=1599, QuestName="HydraQuest",       QuestNumber=1, MobName="Dragon Crew Warrior", QuestNpc=Vector3.new(5229,15,353),      MobPosition=Vector3.new(5300,15,400)},
-    {MinLevel=1600, MaxLevel=1624, QuestName="HydraQuest",       QuestNumber=2, MobName="Dragon Crew Archer",  QuestNpc=Vector3.new(5229,15,353),      MobPosition=Vector3.new(5180,15,300)},
-    {MinLevel=1625, MaxLevel=1649, QuestName="TreeQuest",        QuestNumber=1, MobName="Forest Pirate",       QuestNpc=Vector3.new(2575,1190,-680),   MobPosition=Vector3.new(2630,1190,-720)},
-    {MinLevel=1650, MaxLevel=1699, QuestName="TreeQuest",        QuestNumber=2, MobName="Mythological Pirate", QuestNpc=Vector3.new(2575,1190,-680),   MobPosition=Vector3.new(2520,1190,-640)},
-    {MinLevel=1700, MaxLevel=1724, QuestName="TurtleQuest",      QuestNumber=1, MobName="Musketeer Pirate",    QuestNpc=Vector3.new(-12142,332,-3820), MobPosition=Vector3.new(-12200,332,-3880)},
-    {MinLevel=1725, MaxLevel=1774, QuestName="TurtleQuest",      QuestNumber=2, MobName="Mercenary",           QuestNpc=Vector3.new(-12142,332,-3820), MobPosition=Vector3.new(-12080,332,-3760)},
-    {MinLevel=1775, MaxLevel=1799, QuestName="HauntedQuest",     QuestNumber=1, MobName="Vampire",             QuestNpc=Vector3.new(-9516,167,5765),   MobPosition=Vector3.new(-9580,167,5820)},
-    {MinLevel=1800, MaxLevel=1849, QuestName="HauntedQuest",     QuestNumber=2, MobName="Vampire",             QuestNpc=Vector3.new(-9516,167,5765),   MobPosition=Vector3.new(-9450,167,5710)},
-    {MinLevel=1850, MaxLevel=1899, QuestName="TreatsQuest",      QuestNumber=1, MobName="Candy Pirate",        QuestNpc=Vector3.new(-2364,73,-10925),  MobPosition=Vector3.new(-2420,73,-10980)},
-    {MinLevel=1900, MaxLevel=1974, QuestName="TreatsQuest",      QuestNumber=2, MobName="Sweet Thief",         QuestNpc=Vector3.new(-2364,73,-10925),  MobPosition=Vector3.new(-2300,73,-10870)},
-    {MinLevel=1975, MaxLevel=2024, QuestName="TikiQuest",        QuestNumber=1, MobName="Tiki Warrior",        QuestNpc=Vector3.new(-12104,54,-5765),  MobPosition=Vector3.new(-12160,54,-5820)},
-    {MinLevel=2025, MaxLevel=2074, QuestName="TikiQuest",        QuestNumber=2, MobName="Tiki Warrior",        QuestNpc=Vector3.new(-12104,54,-5765),  MobPosition=Vector3.new(-12050,54,-5710)},
-    {MinLevel=2075, MaxLevel=2174, QuestName="CastleQuest",      QuestNumber=1, MobName="Castle Mage",         QuestNpc=Vector3.new(-5044,314,-2812),  MobPosition=Vector3.new(-5100,314,-2870)},
-    {MinLevel=2175, MaxLevel=2274, QuestName="CastleQuest",      QuestNumber=2, MobName="Royal Warrior",       QuestNpc=Vector3.new(-5044,314,-2812),  MobPosition=Vector3.new(-4980,314,-2750)},
-    {MinLevel=2275, MaxLevel=2399, QuestName="CastleQuest",      QuestNumber=3, MobName="Royal Squad",         QuestNpc=Vector3.new(-5044,314,-2812),  MobPosition=Vector3.new(-5060,314,-2900)},
-    {MinLevel=2400, MaxLevel=2550, QuestName="CastleQuest",      QuestNumber=4, MobName="Elite Pirate",        QuestNpc=Vector3.new(-5044,314,-2812),  MobPosition=Vector3.new(-5000,314,-2800)},
+    {MinLevel=1500, MaxLevel=1524, QuestName="PiratePortQuest", QuestNumber=1, MobName="Pirate Millionaire", QuestNpc=Vector3.new(-290.075,42.903,5581.590), MobPosition=Vector3.new(81.165,43.756,5724.702)},
+    {MinLevel=1525, MaxLevel=1574, QuestName="PiratePortQuest", QuestNumber=2, MobName="Pistol Billionaire", QuestNpc=Vector3.new(-290.075,42.903,5581.590), MobPosition=Vector3.new(81.165,43.756,5724.702)},
+    {MinLevel=1575, MaxLevel=1599, QuestName="AmazonQuest", QuestNumber=1, MobName="Dragon Crew Warrior", QuestNpc=Vector3.new(5832.836,51.681,-1101.516), MobPosition=Vector3.new(6301.998,104.772,-1082.608)},
+    {MinLevel=1600, MaxLevel=1624, QuestName="AmazonQuest", QuestNumber=2, MobName="Dragon Crew Archer", QuestNpc=Vector3.new(5832.836,51.681,-1101.516), MobPosition=Vector3.new(6831.117,483.070,514.792)},
+    {MinLevel=1625, MaxLevel=1649, QuestName="AmazonQuest2", QuestNumber=1, MobName="Female Islander", QuestNpc=Vector3.new(5448.861,601.532,751.114), MobPosition=Vector3.new(5792.517,848.144,1084.182)},
+    {MinLevel=1650, MaxLevel=1699, QuestName="AmazonQuest2", QuestNumber=2, MobName="Giant Islander", QuestNpc=Vector3.new(5448.861,601.532,751.114), MobPosition=Vector3.new(5034.813,664.653,-123.631)},
+    {MinLevel=1700, MaxLevel=1724, QuestName="MarineTreeIsland", QuestNumber=1, MobName="Marine Commodore", QuestNpc=Vector3.new(2180.541,27.816,-6741.550), MobPosition=Vector3.new(2490.084,190.423,-7160.050)},
+    {MinLevel=1725, MaxLevel=1774, QuestName="MarineTreeIsland", QuestNumber=2, MobName="Marine Rear Admiral", QuestNpc=Vector3.new(2180.541,27.816,-6741.550), MobPosition=Vector3.new(3951.393,227.110,-6912.053)},
+    {MinLevel=1775, MaxLevel=1799, QuestName="DeepForestIsland3", QuestNumber=1, MobName="Fishman Raider", QuestNpc=Vector3.new(-10581.656,330.873,-8761.187), MobPosition=Vector3.new(-10407.526,331.763,-8368.604)},
+    {MinLevel=1800, MaxLevel=1824, QuestName="DeepForestIsland3", QuestNumber=2, MobName="Fishman Captain", QuestNpc=Vector3.new(-10581.656,330.873,-8761.187), MobPosition=Vector3.new(-10994.701,352.381,-9002.110)},
+    {MinLevel=1825, MaxLevel=1849, QuestName="DeepForestIsland", QuestNumber=1, MobName="Forest Pirate", QuestNpc=Vector3.new(-13234.040,331.488,-7625.401), MobPosition=Vector3.new(-13225.021,428.194,-7753.467)},
+    {MinLevel=1850, MaxLevel=1899, QuestName="DeepForestIsland", QuestNumber=2, MobName="Mythological Pirate", QuestNpc=Vector3.new(-13234.040,331.488,-7625.401), MobPosition=Vector3.new(-13869.173,564.813,-7086.048)},
+    {MinLevel=1900, MaxLevel=1924, QuestName="DeepForestIsland2", QuestNumber=1, MobName="Jungle Pirate", QuestNpc=Vector3.new(-12680.382,389.971,-9902.020), MobPosition=Vector3.new(-12262.889,430.273,-10393.493)},
+    {MinLevel=1925, MaxLevel=1974, QuestName="DeepForestIsland2", QuestNumber=2, MobName="Musketeer Pirate", QuestNpc=Vector3.new(-12680.382,389.971,-9902.020), MobPosition=Vector3.new(-13283.894,524.385,-9975.609)},
+    {MinLevel=1975, MaxLevel=1999, QuestName="HauntedQuest1", QuestNumber=1, MobName="Reborn Skeleton", QuestNpc=Vector3.new(-9479.217,141.215,5566.093), MobPosition=Vector3.new(-8761.315,164.858,6161.160)},
+    {MinLevel=2000, MaxLevel=2024, QuestName="HauntedQuest1", QuestNumber=2, MobName="Living Zombie", QuestNpc=Vector3.new(-9479.217,141.215,5566.093), MobPosition=Vector3.new(-10144.132,138.627,6243.350)},
+    {MinLevel=2025, MaxLevel=2049, QuestName="HauntedQuest2", QuestNumber=1, MobName="Demonic Soul", QuestNpc=Vector3.new(-9515.750,174.852,6079.406), MobPosition=Vector3.new(-9506.401,176.094,6172.262)},
+    {MinLevel=2050, MaxLevel=2074, QuestName="HauntedQuest2", QuestNumber=2, MobName="Posessed Mummy", QuestNpc=Vector3.new(-9515.750,174.852,6079.406), MobPosition=Vector3.new(-9582.151,6.179,6188.422)},
+    {MinLevel=2075, MaxLevel=2099, QuestName="NutsIslandQuest", QuestNumber=1, MobName="Peanut Scout", QuestNpc=Vector3.new(-2104.172,38.130,-10194.418), MobPosition=Vector3.new(-2150.406,120.125,-10353.003)},
+    {MinLevel=2100, MaxLevel=2124, QuestName="NutsIslandQuest", QuestNumber=2, MobName="Peanut President", QuestNpc=Vector3.new(-2104.172,38.130,-10194.418), MobPosition=Vector3.new(-2150.406,120.125,-10353.003)},
+    {MinLevel=2125, MaxLevel=2149, QuestName="IceCreamIslandQuest", QuestNumber=1, MobName="Ice Cream Chef", QuestNpc=Vector3.new(-820.648,65.820,-10965.796), MobPosition=Vector3.new(-857.365,117.309,-11037.851)},
+    {MinLevel=2150, MaxLevel=2199, QuestName="IceCreamIslandQuest", QuestNumber=2, MobName="Ice Cream Commander", QuestNpc=Vector3.new(-820.648,65.820,-10965.796), MobPosition=Vector3.new(-857.365,117.309,-11037.851)},
+    {MinLevel=2200, MaxLevel=2224, QuestName="CakeQuest1", QuestNumber=1, MobName="Cookie Crafter", QuestNpc=Vector3.new(-2021.320,37.798,-12028.730), MobPosition=Vector3.new(-2322.064,37.798,-12150.913)},
+    {MinLevel=2225, MaxLevel=2249, QuestName="CakeQuest1", QuestNumber=2, MobName="Cake Guard", QuestNpc=Vector3.new(-2021.320,37.798,-12028.730), MobPosition=Vector3.new(-1418.110,37.798,-12255.732)},
+    {MinLevel=2250, MaxLevel=2274, QuestName="CakeQuest2", QuestNumber=1, MobName="Baking Staff", QuestNpc=Vector3.new(-1927.916,37.798,-12842.539), MobPosition=Vector3.new(-1837.280,77.606,-12896.552)},
+    {MinLevel=2275, MaxLevel=2299, QuestName="CakeQuest2", QuestNumber=2, MobName="Head Baker", QuestNpc=Vector3.new(-1927.916,37.798,-12842.539), MobPosition=Vector3.new(-2203.302,70.915,-12903.390)},
+    {MinLevel=2300, MaxLevel=2324, QuestName="ChocQuest1", QuestNumber=1, MobName="Cocoa Warrior", QuestNpc=Vector3.new(233.228,29.876,-12201.233), MobPosition=Vector3.new(137.829,82.420,-12396.800)},
+    {MinLevel=2325, MaxLevel=2349, QuestName="ChocQuest1", QuestNumber=2, MobName="Chocolate Bar Battler", QuestNpc=Vector3.new(233.228,29.876,-12201.233), MobPosition=Vector3.new(721.716,82.420,-12596.176)},
+    {MinLevel=2350, MaxLevel=2374, QuestName="ChocQuest2", QuestNumber=1, MobName="Sweet Thief", QuestNpc=Vector3.new(150.507,30.694,-12774.503), MobPosition=Vector3.new(128.246,82.420,-12860.881)},
+    {MinLevel=2375, MaxLevel=2399, QuestName="ChocQuest2", QuestNumber=2, MobName="Candy Rebel", QuestNpc=Vector3.new(150.507,30.694,-12774.503), MobPosition=Vector3.new(128.246,82.420,-12860.881)},
+    {MinLevel=2400, MaxLevel=2424, QuestName="CandyQuest", QuestNumber=1, MobName="Candy Pirate", QuestNpc=Vector3.new(-1150.040,20.379,-14446.335), MobPosition=Vector3.new(-1310.500,26.017,-14562.404)},
+    {MinLevel=2425, MaxLevel=2449, QuestName="CandyQuest", QuestNumber=2, MobName="Snow Demon", QuestNpc=Vector3.new(-1150.040,20.379,-14446.335), MobPosition=Vector3.new(-887.181,82.420,-14525.981)},
+    {MinLevel=2450, MaxLevel=2474, QuestName="TikiQuest1", QuestNumber=1, MobName="Isle Outlaw", QuestNpc=Vector3.new(-16547.746,61.135,-173.414), MobPosition=Vector3.new(-16448.922,116.139,-277.707)},
+    {MinLevel=2475, MaxLevel=2499, QuestName="TikiQuest1", QuestNumber=2, MobName="Island Boy", QuestNpc=Vector3.new(-16547.746,61.135,-173.414), MobPosition=Vector3.new(-16901.262,84.068,-192.889)},
+    {MinLevel=2500, MaxLevel=2524, QuestName="TikiQuest2", QuestNumber=1, MobName="Sun-kissed Warrior", QuestNpc=Vector3.new(-16539.078,55.686,1051.574), MobPosition=Vector3.new(-16321.292,92.102,1111.195)},
+    {MinLevel=2525, MaxLevel=2549, QuestName="TikiQuest2", QuestNumber=2, MobName="Isle Champion", QuestNpc=Vector3.new(-16539.078,55.686,1051.574), MobPosition=Vector3.new(-16641.688,125.975,1065.094)},
+    {MinLevel=2550, MaxLevel=2574, QuestName="TikiQuest3", QuestNumber=1, MobName="Serpent Hunter", QuestNpc=Vector3.new(-16667.146,105.340,1573.600), MobPosition=Vector3.new(-16551.104,116.325,1538.730)},
+    {MinLevel=2575, MaxLevel=2599, QuestName="TikiQuest3", QuestNumber=2, MobName="Skull Slayer", QuestNpc=Vector3.new(-16667.146,105.340,1573.600), MobPosition=Vector3.new(-16808.527,120.855,1479.563)},
+    {MinLevel=2600, MaxLevel=2624, QuestName="SubmergedQuest1", QuestNumber=1, MobName="Reef Bandit", QuestNpc=Vector3.new(10778.875,-2087.724,9265.184), MobPosition=Vector3.new(11019.132,-2146.068,9342.392), Travel="Submerged"},
+    {MinLevel=2625, MaxLevel=2649, QuestName="SubmergedQuest1", QuestNumber=2, MobName="Coral Pirate", QuestNpc=Vector3.new(10778.875,-2087.724,9265.184), MobPosition=Vector3.new(10808.601,-2030.361,9364.233), Travel="Submerged"},
+    {MinLevel=2650, MaxLevel=2674, QuestName="SubmergedQuest2", QuestNumber=1, MobName="Sea Chanter", QuestNpc=Vector3.new(10880.686,-2086.200,10032.624), MobPosition=Vector3.new(10671.272,-2057.592,10047.259), Travel="Submerged"},
+    {MinLevel=2675, MaxLevel=2699, QuestName="SubmergedQuest2", QuestNumber=2, MobName="Ocean Prophet", QuestNpc=Vector3.new(10880.686,-2086.200,10032.624), MobPosition=Vector3.new(11008.520,-2007.728,10223.079), Travel="Submerged"},
+    {MinLevel=2700, MaxLevel=2724, QuestName="SubmergedQuest3", QuestNumber=1, MobName="High Disciple", QuestNpc=Vector3.new(9640.088,-1992.445,9613.652), MobPosition=Vector3.new(9750.416,-1966.939,9753.360), Travel="Submerged"},
+    {MinLevel=2725, MaxLevel=math.huge, QuestName="SubmergedQuest3", QuestNumber=2, MobName="Grand Devotee", QuestNpc=Vector3.new(9640.088,-1992.445,9613.652), MobPosition=Vector3.new(9611.705,-1993.471,9882.688), Travel="Submerged"},
 }
-
 -- ==================== BOSS DATA ====================
 local BossesSea1 = {
     {Name="Gorilla King",     Level=25,   Position=Vector3.new(-1243,6,-493)},
@@ -398,26 +431,125 @@ local function setNoclip(state)
     end
 end
 
--- ====== Bay tới mục tiêu (Tween) ======
+-- ====== Trạng thái farm: tách di chuyển và chiến đấu ======
+local currentTween = nil
+local activeFarmTarget = nil
+local farmState = "idle"
+local lastAttackTime = 0
+local restoreFrozenMobs = function() end
+
+local function clearFarmTarget()
+    activeFarmTarget = nil
+    if farmState == "attacking" then farmState = "idle" end
+
+    local char = Player.Character
+    local humanoid = char and char:FindFirstChildOfClass("Humanoid")
+    if humanoid then
+        humanoid.AutoRotate = true
+    end
+end
+
+local function stopFarmMovement()
+    if currentTween then
+        pcall(function() currentTween:Cancel() end)
+        currentTween = nil
+    end
+    clearFarmTarget()
+    restoreFrozenMobs()
+    farmState = "idle"
+    setNoclip(false)
+end
+
+local function getFarmCFrame(targetRoot)
+    local height = tonumber(_G.FarmHeight) or 8
+    local distance = tonumber(_G.FarmDistance) or 0
+    return targetRoot.CFrame * CFrame.new(0, height, distance)
+end
+
+local function holdFarmTarget(target)
+    if not target or not target.Parent then
+        clearFarmTarget()
+        return
+    end
+
+    if currentTween then
+        pcall(function() currentTween:Cancel() end)
+        currentTween = nil
+    end
+
+    activeFarmTarget = target
+    farmState = "attacking"
+    setNoclip(true)
+end
+
+-- Giữ nhân vật đứng yên tương đối với quái; không chạy/chase trong lúc đánh.
+RunService.Heartbeat:Connect(function()
+    pcall(function()
+        if farmState ~= "attacking" or not activeFarmTarget then return end
+        if not _G.HoldFarmPosition then return end
+        if not activeFarmTarget.Parent then
+            clearFarmTarget()
+            return
+        end
+
+        local targetHumanoid = activeFarmTarget:FindFirstChildOfClass("Humanoid")
+        local targetRoot = activeFarmTarget:FindFirstChild("HumanoidRootPart")
+        local char = Player.Character
+        local rootPart = char and char:FindFirstChild("HumanoidRootPart")
+        local humanoid = char and char:FindFirstChildOfClass("Humanoid")
+
+        if not targetHumanoid or targetHumanoid.Health <= 0 or not targetRoot
+            or not rootPart or not humanoid then
+            clearFarmTarget()
+            return
+        end
+
+        rootPart.CFrame = getFarmCFrame(targetRoot)
+        rootPart.AssemblyLinearVelocity = Vector3.zero
+        rootPart.AssemblyAngularVelocity = Vector3.zero
+        humanoid.AutoRotate = false
+        humanoid:Move(Vector3.zero, false)
+    end)
+end)
+
+-- ====== Bay tới mục tiêu (Tween), tự hủy khi chuyển sang đánh ======
 local function toTarget(targetCFrame)
     local char = Player.Character
-    if not char or not char:FindFirstChild("HumanoidRootPart") then return end
+    if not char or not char:FindFirstChild("HumanoidRootPart") then return false end
+
+    clearFarmTarget()
+    farmState = "moving"
+
+    if currentTween then
+        pcall(function() currentTween:Cancel() end)
+        currentTween = nil
+    end
+
     local rootPart = char.HumanoidRootPart
     local distance = (rootPart.Position - targetCFrame.Position).Magnitude
 
-    -- Nếu gần rồi thì teleport thẳng
     if distance < 15 then
         rootPart.CFrame = targetCFrame
-        return
+        rootPart.AssemblyLinearVelocity = Vector3.zero
+        farmState = "idle"
+        return true
     end
 
     local speed = 300
     setNoclip(true)
-    local tweenInfo = TweenInfo.new(distance / speed, Enum.EasingStyle.Linear)
-    local tween = TweenService:Create(rootPart, tweenInfo, {CFrame = targetCFrame})
-    tween:Play()
-    tween.Completed:Wait()
+    currentTween = TweenService:Create(
+        rootPart,
+        TweenInfo.new(distance / speed, Enum.EasingStyle.Linear),
+        {CFrame = targetCFrame}
+    )
+    currentTween:Play()
+    currentTween.Completed:Wait()
+    currentTween = nil
+
+    if farmState == "moving" then farmState = "idle" end
     setNoclip(false)
+
+    return (rootPart.Position - targetCFrame.Position).Magnitude <= 25
 end
 
 -- ====== Haki (Buso & Ken) ======
@@ -426,35 +558,42 @@ local function checkHaki()
         local char = Player.Character
         if not char then return end
 
-        -- Auto Buso Haki
         if _G.AutoHaki and not char:FindFirstChild("HasBuso") then
             ReplicatedStorage.Remotes.CommF_:InvokeServer("Buso")
         end
 
-        -- Auto Ken Haki
         if _G.AutoKen and not char:FindFirstChild("HasKen") then
             local ken = ReplicatedStorage.Remotes:FindFirstChild("Ken")
             if ken then ken:FireServer(true) end
         end
 
-        -- Auto Observation V2
         if _G.AutoObsV2 then
             ReplicatedStorage.Remotes.CommF_:InvokeServer("Observation")
         end
     end)
 end
 
--- ====== Tấn công (chỉ dùng tool:Activate — an toàn cho GUI) ======
+-- Tool:Activate kết hợp click ảo để tương thích nhiều executor hơn.
 local function attack()
-    checkHaki()
-    local char = Player.Character
-    if not char then return end
-    local tool = char:FindFirstChildOfClass("Tool")
-    if tool then
-        tool:Activate()
-    end
-end
+    local now = tick()
+    local delay = math.max(0.03, tonumber(_G.AttackDelay) or 0.08)
+    if now - lastAttackTime < delay then return end
+    lastAttackTime = now
 
+    checkHaki()
+
+    local char = Player.Character
+    local tool = char and char:FindFirstChildOfClass("Tool")
+    if not tool then return end
+
+    pcall(function() tool:Activate() end)
+    pcall(function()
+        local input = game:GetService("VirtualInputManager")
+        input:SendMouseButtonEvent(0, 0, 0, true, game, 0)
+        task.wait(0.02)
+        input:SendMouseButtonEvent(0, 0, 0, false, game, 0)
+    end)
+end
 -- ====== Auto Skill (dùng Z, X, C, V) ======
 local lastSkillTime = 0
 local function useSkills()
@@ -511,26 +650,144 @@ local function equipWeapon(weaponType)
     end)
 end
 
--- ====== Gom quái lại 1 chỗ ======
+-- Tên model có thể là "Monkey" hoặc "Monkey [Lv. 14]".
+local function mobNameMatches(actualName, wantedName)
+    if not actualName or not wantedName or wantedName == "" then return false end
+
+    local actual = string.lower(tostring(actualName))
+    local wanted = string.lower(tostring(wantedName))
+
+    if actual == wanted then return true end
+    if string.find(actual, wanted, 1, true) then return true end
+
+    actual = actual:gsub("%s*%[lv%.?%s*%d+%]%s*", "")
+    actual = actual:gsub("%s*%[boss%]%s*", "")
+    actual = actual:gsub("^the%s+", "")
+    actual = actual:gsub("%s+$", "")
+
+    wanted = wanted:gsub("%s*%[lv%.?%s*%d+%]%s*", "")
+    wanted = wanted:gsub("%s*%[boss%]%s*", "")
+    wanted = wanted:gsub("^the%s+", "")
+    wanted = wanted:gsub("%s+$", "")
+
+    return actual == wanted or string.find(actual, wanted, 1, true) ~= nil
+end
+
+
+-- ====== Khóa và gom quái có thể hoàn nguyên ======
+local frozenMobStates = setmetatable({}, {__mode = "k"})
+
+local function grantSimulationRadius()
+    pcall(function()
+        if sethiddenproperty then
+            sethiddenproperty(Player, "SimulationRadius", math.huge)
+        elseif setsimulationradius then
+            setsimulationradius(math.huge, math.huge)
+        end
+    end)
+end
+
+local function freezeMob(mob)
+    if not mob or not mob.Parent then return end
+
+    local humanoid = mob:FindFirstChildOfClass("Humanoid")
+    local rootPart = mob:FindFirstChild("HumanoidRootPart")
+    if not humanoid or not rootPart or humanoid.Health <= 0 then return end
+
+    if not frozenMobStates[mob] then
+        frozenMobStates[mob] = {
+            WalkSpeed = humanoid.WalkSpeed,
+            JumpPower = humanoid.JumpPower,
+            AutoRotate = humanoid.AutoRotate,
+            CanCollide = rootPart.CanCollide,
+            Size = rootPart.Size,
+        }
+    end
+
+    rootPart.CanCollide = false
+    rootPart.AssemblyLinearVelocity = Vector3.zero
+    rootPart.AssemblyAngularVelocity = Vector3.zero
+
+    local hitboxSize = math.clamp(tonumber(_G.HitboxSize) or 12, 2, 40)
+    rootPart.Size = Vector3.new(hitboxSize, hitboxSize, hitboxSize)
+
+    if _G.FreezeTarget then
+        humanoid.WalkSpeed = 0
+        humanoid.JumpPower = 0
+        humanoid.AutoRotate = false
+    end
+end
+
+restoreFrozenMobs = function()
+    for mob, state in pairs(frozenMobStates) do
+        pcall(function()
+            if mob and mob.Parent then
+                local humanoid = mob:FindFirstChildOfClass("Humanoid")
+                local rootPart = mob:FindFirstChild("HumanoidRootPart")
+                if humanoid then
+                    humanoid.WalkSpeed = state.WalkSpeed
+                    humanoid.JumpPower = state.JumpPower
+                    humanoid.AutoRotate = state.AutoRotate
+                end
+                if rootPart then
+                    rootPart.CanCollide = state.CanCollide
+                    rootPart.Size = state.Size
+                end
+            end
+        end)
+        frozenMobStates[mob] = nil
+    end
+end
+
 local function bringMobsNear(targetName, centerCFrame)
     if not _G.BringMob then return end
+
     pcall(function()
         if not workspace:FindFirstChild("Enemies") then return end
+        grantSimulationRadius()
+
+        local radius = math.clamp(tonumber(_G.BringRadius) or 300, 50, 1000)
         for _, mob in pairs(workspace.Enemies:GetChildren()) do
-            if mob.Name == targetName
-                and mob:FindFirstChild("Humanoid") and mob.Humanoid.Health > 0
-                and mob:FindFirstChild("HumanoidRootPart") then
-                local dist = (mob.HumanoidRootPart.Position - centerCFrame.Position).Magnitude
-                if dist <= 350 then
-                    mob.HumanoidRootPart.CFrame = centerCFrame
-                    mob.HumanoidRootPart.CanCollide = false
-                    mob.Humanoid.WalkSpeed = 0
+            local humanoid = mob:FindFirstChildOfClass("Humanoid")
+            local rootPart = mob:FindFirstChild("HumanoidRootPart")
+
+            if mobNameMatches(mob.Name, targetName)
+                and humanoid and humanoid.Health > 0 and rootPart then
+                local distance = (rootPart.Position - centerCFrame.Position).Magnitude
+                if distance <= radius then
+                    freezeMob(mob)
+                    rootPart.CFrame = centerCFrame
+                    rootPart.AssemblyLinearVelocity = Vector3.zero
+                    rootPart.AssemblyAngularVelocity = Vector3.zero
                 end
             end
         end
     end)
 end
 
+local function engageTarget(target, targetName, weaponType)
+    if not target or not target.Parent then
+        clearFarmTarget()
+        return false
+    end
+
+    local humanoid = target:FindFirstChildOfClass("Humanoid")
+    local targetRoot = target:FindFirstChild("HumanoidRootPart")
+    if not humanoid or humanoid.Health <= 0 or not targetRoot then
+        clearFarmTarget()
+        return false
+    end
+
+    holdFarmTarget(target)
+    grantSimulationRadius()
+    freezeMob(target)
+    bringMobsNear(targetName or target.Name, targetRoot.CFrame)
+
+    equipWeapon(weaponType or _G.SelectWeapon)
+    attack()
+    useSkills()
+    return true
+end
 -- ====== Lấy quest phù hợp level ======
 local function getQuestData(level)
     local questTable
@@ -551,9 +808,84 @@ end
 
 -- ====== Kiểm tra quest đang hoạt động ======
 local function hasActiveQuest()
-    local questGui = Player.PlayerGui:FindFirstChild("Main")
-        and Player.PlayerGui.Main:FindFirstChild("Quest")
-    return questGui and questGui.Visible
+    local mainGui = Player.PlayerGui:FindFirstChild("Main")
+    local questGui = mainGui and mainGui:FindFirstChild("Quest")
+    return questGui ~= nil and questGui.Visible == true
+end
+
+local lastSubmergedTravel = 0
+local lastQuestWarning = 0
+
+local function ensureQuestArea(quest)
+    local char = Player.Character
+    local rootPart = char and char:FindFirstChild("HumanoidRootPart")
+    if not rootPart then return false end
+
+    if quest.Travel == "Submerged" and rootPart.Position.Y > -1000 then
+        if tick() - lastSubmergedTravel < 8 then return false end
+        lastSubmergedTravel = tick()
+
+        toTarget(CFrame.new(-16269.704, 25.229, 1373.660))
+        task.wait(1)
+
+        local remotes = ReplicatedStorage:FindFirstChild("Remotes")
+        local submarineRemote = remotes and remotes:FindFirstChild("RF/SubmarineWorkerSpeak")
+        if submarineRemote then
+            pcall(function()
+                submarineRemote:InvokeServer("TravelToSubmergedIsland")
+            end)
+            task.wait(5)
+        else
+            warn("[HAOTOOL] Không tìm thấy remote đi Submerged Island.")
+            return false
+        end
+    elseif quest.Entrance
+        and (rootPart.Position - quest.QuestNpc).Magnitude > 3000 then
+        pcall(function()
+            ReplicatedStorage.Remotes.CommF_:InvokeServer("requestEntrance", quest.Entrance)
+        end)
+        task.wait(1)
+    end
+
+    return true
+end
+
+local function startQuest(quest)
+    clearFarmTarget()
+    if not ensureQuestArea(quest) then return false end
+
+    if not toTarget(CFrame.new(quest.QuestNpc)) then return false end
+    if not _G.AutoFarmLevel then return false end
+
+    local char = Player.Character
+    local rootPart = char and char:FindFirstChild("HumanoidRootPart")
+    if not rootPart or (rootPart.Position - quest.QuestNpc).Magnitude > 30 then
+        return false
+    end
+
+    for _ = 1, 3 do
+        if not _G.AutoFarmLevel then return false end
+        if hasActiveQuest() then return true end
+
+        pcall(function()
+            ReplicatedStorage.Remotes.CommF_:InvokeServer(
+                "StartQuest", quest.QuestName, quest.QuestNumber
+            )
+        end)
+
+        task.wait(0.7)
+    end
+
+    if not hasActiveQuest() and tick() - lastQuestWarning > 8 then
+        lastQuestWarning = tick()
+        warn(string.format(
+            "[HAOTOOL] Nhận quest thất bại: %s #%s",
+            tostring(quest.QuestName),
+            tostring(quest.QuestNumber)
+        ))
+    end
+
+    return hasActiveQuest()
 end
 
 -- ====== Tìm quái theo tên (gần nhất) ======
@@ -569,7 +901,7 @@ local function findMob(mobName, useNearest)
         if mob:FindFirstChild("Humanoid") and mob.Humanoid.Health > 0
             and mob:FindFirstChild("HumanoidRootPart") then
 
-            local nameMatch = (mobName == "" or mobName == nil or mob.Name == mobName)
+            local nameMatch = (mobName == "" or mobName == nil or mobNameMatches(mob.Name, mobName))
             if useNearest then nameMatch = true end
 
             if nameMatch then
@@ -593,7 +925,7 @@ end
 local function findBoss(bossName)
     if not workspace:FindFirstChild("Enemies") then return nil end
     for _, mob in pairs(workspace.Enemies:GetChildren()) do
-        if mob.Name == bossName
+        if mobNameMatches(mob.Name, bossName)
             and mob:FindFirstChild("Humanoid") and mob.Humanoid.Health > 0
             and mob:FindFirstChild("HumanoidRootPart") then
             return mob
@@ -781,7 +1113,8 @@ end
 -- ====== LOOP 1: Auto Farm Level ======
 task.spawn(function()
     while true do
-        task.wait(0.15)
+        task.wait(0.10)
+
         if _G.AutoFarmLevel then
             pcall(function()
                 local level = Player.Data.Level.Value
@@ -789,138 +1122,114 @@ task.spawn(function()
                 if not quest then return end
 
                 if not hasActiveQuest() then
-                    -- Bay tới NPC nhận quest
-                    toTarget(CFrame.new(quest.QuestNpc))
-                    task.wait(0.5)
-                    ReplicatedStorage.Remotes.CommF_:InvokeServer(
-                        "StartQuest", quest.QuestName, quest.QuestNumber
-                    )
-                    task.wait(0.3)
-                else
-                    -- Tìm quái theo phương thức farm
-                    local targetMob = nil
-
-                    if _G.FarmMethod == "Quest" then
-                        targetMob = findMob(quest.MobName, false)
-                    elseif _G.FarmMethod == "Nearest" then
-                        targetMob = findMob("", true)
-                    elseif _G.FarmMethod == "Selected Mob" then
-                        targetMob = findMob(_G.SelectedMob, false)
-                    else
-                        targetMob = findMob(quest.MobName, false)
-                    end
-
-                    if not targetMob then
-                        -- Không có quái → bay tới vị trí mob
-                        toTarget(CFrame.new(quest.MobPosition))
-                    else
-                        equipWeapon(_G.SelectWeapon)
-                        local char = Player.Character
-                        if char and char:FindFirstChild("HumanoidRootPart")
-                            and targetMob:FindFirstChild("HumanoidRootPart") then
-                            setNoclip(true)
-                            -- Đứng phía trên quái để đánh
-                            char.HumanoidRootPart.CFrame =
-                                targetMob.HumanoidRootPart.CFrame * CFrame.new(0, 7, 0)
-                            -- Gom quái nếu bật
-                            bringMobsNear(quest.MobName, targetMob.HumanoidRootPart.CFrame)
-                            -- Đánh
-                            attack()
-                            -- Auto Skill
-                            useSkills()
-                        end
-                    end
+                    startQuest(quest)
+                    return
                 end
+
+                local targetMob = nil
+                if _G.FarmMethod == "Quest" then
+                    targetMob = findMob(quest.MobName, false)
+                elseif _G.FarmMethod == "Nearest" then
+                    targetMob = findMob("", true)
+                elseif _G.FarmMethod == "Selected Mob" then
+                    targetMob = findMob(_G.SelectedMob, false)
+                else
+                    targetMob = findMob(quest.MobName, false)
+                end
+
+                if not targetMob then
+                    clearFarmTarget()
+                    if ensureQuestArea(quest) then
+                        toTarget(CFrame.new(quest.MobPosition))
+                    end
+                    return
+                end
+
+                local bringName = quest.MobName
+                if _G.FarmMethod == "Nearest" then
+                    bringName = targetMob.Name
+                elseif _G.FarmMethod == "Selected Mob" then
+                    bringName = _G.SelectedMob
+                end
+
+                engageTarget(targetMob, bringName, _G.SelectWeapon)
             end)
-        else
-            setNoclip(false)
         end
     end
 end)
-
 -- ====== LOOP 2: Auto Farm Mastery ======
 task.spawn(function()
     while true do
-        task.wait(0.15)
-        if _G.AutoFarmMastery and not _G.AutoFarmLevel then
+        task.wait(0.10)
+
+        if _G.AutoFarmMastery and not _G.AutoFarmLevel and not _G.AutoFarmBoss then
             pcall(function()
-                equipWeapon(_G.MasteryWeapon)
-                -- Tìm quái gần nhất để farm mastery
                 local targetMob = findMob("", true)
-                if targetMob and targetMob:FindFirstChild("HumanoidRootPart") then
-                    local char = Player.Character
-                    if char and char:FindFirstChild("HumanoidRootPart") then
-                        setNoclip(true)
-                        char.HumanoidRootPart.CFrame =
-                            targetMob.HumanoidRootPart.CFrame * CFrame.new(0, 7, 0)
-                        attack()
-                        useSkills()
-                    end
+                if targetMob then
+                    engageTarget(targetMob, targetMob.Name, _G.MasteryWeapon)
+                else
+                    clearFarmTarget()
                 end
             end)
         end
     end
 end)
-
 -- ====== LOOP 3: Auto Farm Boss ======
 task.spawn(function()
     while true do
-        task.wait(0.2)
+        task.wait(0.10)
+
         if _G.AutoFarmBoss and not _G.AutoFarmLevel then
             pcall(function()
                 local bossData = getBossData(_G.SelectedBoss)
                 if not bossData then return end
 
                 local boss = findBoss(_G.SelectedBoss)
-                if not boss then
-                    -- Boss chưa spawn, bay tới vị trí chờ
-                    toTarget(CFrame.new(bossData.Position))
-                    task.wait(1)
+                if boss then
+                    engageTarget(boss, boss.Name, _G.SelectWeapon)
                 else
-                    equipWeapon(_G.SelectWeapon)
-                    local char = Player.Character
-                    if char and char:FindFirstChild("HumanoidRootPart")
-                        and boss:FindFirstChild("HumanoidRootPart") then
-                        setNoclip(true)
-                        char.HumanoidRootPart.CFrame =
-                            boss.HumanoidRootPart.CFrame * CFrame.new(0, 7, 0)
-                        attack()
-                        useSkills()
-                    end
+                    clearFarmTarget()
+                    toTarget(CFrame.new(bossData.Position))
+                    task.wait(0.5)
                 end
             end)
         end
     end
 end)
-
 -- ====== LOOP 4: Auto Farm Sea Beast ======
 task.spawn(function()
     while true do
-        task.wait(1)
-        if _G.AutoFarmSeaBeast then
+        task.wait(0.15)
+
+        if _G.AutoFarmSeaBeast and not _G.AutoFarmLevel and not _G.AutoFarmBoss and not _G.AutoFarmMastery then
             pcall(function()
-                -- Tìm Sea Beast trong workspace
                 for _, obj in pairs(workspace:GetChildren()) do
-                    if obj:FindFirstChild("Humanoid") and obj.Humanoid.Health > 0
-                        and obj:FindFirstChild("HumanoidRootPart")
+                    local humanoid = obj:FindFirstChildOfClass("Humanoid")
+                    local rootPart = obj:FindFirstChild("HumanoidRootPart")
+                    if humanoid and humanoid.Health > 0 and rootPart
                         and (obj.Name:find("Sea Beast") or obj.Name:find("SeaBeast")) then
-                        equipWeapon(_G.SelectWeapon)
-                        local char = Player.Character
-                        if char and char:FindFirstChild("HumanoidRootPart") then
-                            setNoclip(true)
-                            char.HumanoidRootPart.CFrame =
-                                obj.HumanoidRootPart.CFrame * CFrame.new(0, 10, 0)
-                            attack()
-                            useSkills()
-                        end
-                        break
+                        engageTarget(obj, obj.Name, _G.SelectWeapon)
+                        return
                     end
                 end
+                clearFarmTarget()
             end)
         end
     end
 end)
 
+-- Chỉ hoàn nguyên vị trí/noclip khi không còn chế độ farm chiến đấu nào bật.
+task.spawn(function()
+    while true do
+        task.wait(0.25)
+        if not _G.AutoFarmLevel and not _G.AutoFarmMastery
+            and not _G.AutoFarmBoss and not _G.AutoFarmSeaBeast and not _G.AutoRaidFarm then
+            if farmState ~= "idle" or activeFarmTarget or currentTween then
+                stopFarmMovement()
+            end
+        end
+    end
+end)
 -- ====== LOOP 5: Auto Farm Observation ======
 task.spawn(function()
     while true do
@@ -1035,18 +1344,13 @@ task.spawn(function()
                     task.wait(3)
                 else
                     -- Đang trong raid → farm quái raid
-                    if _G.AutoRaidFarm then
+                    if _G.AutoRaidFarm and not _G.AutoFarmLevel
+                        and not _G.AutoFarmBoss and not _G.AutoFarmMastery and not _G.AutoFarmSeaBeast then
                         local targetMob = findMob("", true)
-                        if targetMob and targetMob:FindFirstChild("HumanoidRootPart") then
-                            equipWeapon(_G.SelectWeapon)
-                            local char = Player.Character
-                            if char and char:FindFirstChild("HumanoidRootPart") then
-                                setNoclip(true)
-                                char.HumanoidRootPart.CFrame =
-                                    targetMob.HumanoidRootPart.CFrame * CFrame.new(0, 7, 0)
-                                attack()
-                                useSkills()
-                            end
+                        if targetMob then
+                            engageTarget(targetMob, targetMob.Name, _G.SelectWeapon)
+                        else
+                            clearFarmTarget()
                         end
                     end
                 end
@@ -1407,14 +1711,26 @@ FarmCoreSection:AddToggle("AutoFarmLevel", {
     Title = "Auto Farm Level",
     Description = "Tự động nhận quest → farm quái → lên level",
     Default = false,
-    Callback = function(v) _G.AutoFarmLevel = v end,
+    Callback = function(v)
+        _G.AutoFarmLevel = v
+        if not v and not _G.AutoFarmMastery and not _G.AutoFarmBoss
+            and not _G.AutoFarmSeaBeast then
+            stopFarmMovement()
+        end
+    end,
 })
 
 FarmCoreSection:AddToggle("AutoFarmMastery", {
     Title = "Auto Farm Mastery",
     Description = "Farm mastery cho vũ khí được chọn",
     Default = false,
-    Callback = function(v) _G.AutoFarmMastery = v end,
+    Callback = function(v)
+        _G.AutoFarmMastery = v
+        if not v and not _G.AutoFarmLevel and not _G.AutoFarmBoss
+            and not _G.AutoFarmSeaBeast then
+            stopFarmMovement()
+        end
+    end,
 })
 
 FarmCoreSection:AddDropdown("MasteryWeaponDrop", {
@@ -1445,22 +1761,92 @@ FarmCoreSection:AddDropdown("SelectedMobDrop", {
     Callback = function(v) _G.SelectedMob = v end,
 })
 
-FarmCoreSection:AddToggle("BringMobToggle", {
-    Title = "Gom Quái (Bring Mob)",
-    Description = "Kéo quái cùng tên lại 1 chỗ",
-    Default = false,
-    Callback = function(v) _G.BringMob = v end,
+local FarmPositionSection = FarmTab:AddSection("Vị trí & chiến đấu")
+
+FarmPositionSection:AddSlider("FarmHeightSlider", {
+    Title = "Độ cao so với quái",
+    Description = "Số âm đứng thấp hơn, số dương đứng cao hơn.",
+    Min = -20,
+    Max = 30,
+    Default = 8,
+    Rounding = 0,
+    Callback = function(v) _G.FarmHeight = v end,
 })
 
-FarmCoreSection:AddToggle("AutoSkillToggle", {
-    Title = "Auto Skill (Z, X, C, V)",
-    Description = "Tự động dùng skill khi farm",
+FarmPositionSection:AddSlider("FarmDistanceSlider", {
+    Title = "Khoảng cách trước / sau",
+    Description = "0 là ngay trên quái; tăng để lùi ra sau.",
+    Min = 0,
+    Max = 25,
+    Default = 0,
+    Rounding = 0,
+    Callback = function(v) _G.FarmDistance = v end,
+})
+
+FarmPositionSection:AddToggle("HoldFarmPositionToggle", {
+    Title = "Giữ vị trí khi đánh",
+    Description = "Ngăn nhân vật vừa đánh vừa chạy hoặc giật quanh quái.",
+    Default = true,
+    Callback = function(v) _G.HoldFarmPosition = v end,
+})
+
+FarmPositionSection:AddToggle("FreezeTargetToggle", {
+    Title = "Khóa di chuyển của quái",
+    Description = "Giữ mục tiêu đứng yên trong lúc đánh.",
+    Default = true,
+    Callback = function(v)
+        _G.FreezeTarget = v
+        if not v then restoreFrozenMobs() end
+    end,
+})
+
+FarmPositionSection:AddSlider("AttackDelaySlider", {
+    Title = "Độ trễ đánh thường",
+    Description = "Thấp hơn sẽ đánh nhanh hơn; 0.08 là mức ổn định.",
+    Min = 0.03,
+    Max = 0.50,
+    Default = 0.08,
+    Rounding = 2,
+    Callback = function(v) _G.AttackDelay = v end,
+})
+
+FarmPositionSection:AddSlider("HitboxSizeSlider", {
+    Title = "Kích thước vùng đánh",
+    Min = 2,
+    Max = 30,
+    Default = 12,
+    Rounding = 0,
+    Callback = function(v) _G.HitboxSize = v end,
+})
+
+FarmPositionSection:AddToggle("BringMobToggle", {
+    Title = "Gom quái cùng loại",
+    Description = "Kéo các quái cùng tên về mục tiêu đang đánh.",
+    Default = true,
+    Callback = function(v)
+        _G.BringMob = v
+        if not v then restoreFrozenMobs() end
+    end,
+})
+
+FarmPositionSection:AddSlider("BringRadiusSlider", {
+    Title = "Bán kính gom quái",
+    Min = 50,
+    Max = 1000,
+    Default = 300,
+    Rounding = 0,
+    Callback = function(v) _G.BringRadius = v end,
+})
+
+FarmPositionSection:AddToggle("AutoSkillToggle", {
+    Title = "Tự dùng kỹ năng Z, X, C, V",
+    Description = "Dùng lần lượt các kỹ năng khi đang giữ vị trí.",
     Default = false,
     Callback = function(v) _G.AutoSkill = v end,
 })
 
-FarmCoreSection:AddSlider("SkillCDSlider", {
-    Title = "Cooldown Skill (giây)",
+FarmPositionSection:AddSlider("SkillCDSlider", {
+    Title = "Hồi chiêu kỹ năng",
     Min = 0.5,
     Max = 5,
     Default = 1.5,
@@ -1474,7 +1860,13 @@ FarmBossSection:AddToggle("AutoFarmBoss", {
     Title = "Auto Farm Boss",
     Description = "Tự động farm boss được chọn",
     Default = false,
-    Callback = function(v) _G.AutoFarmBoss = v end,
+    Callback = function(v)
+        _G.AutoFarmBoss = v
+        if not v and not _G.AutoFarmLevel and not _G.AutoFarmMastery
+            and not _G.AutoFarmSeaBeast then
+            stopFarmMovement()
+        end
+    end,
 })
 
 FarmBossSection:AddDropdown("SelectedBossDrop", {
@@ -1487,7 +1879,13 @@ FarmBossSection:AddDropdown("SelectedBossDrop", {
 FarmBossSection:AddToggle("AutoFarmSeaBeast", {
     Title = "Auto Farm Sea Beast",
     Default = false,
-    Callback = function(v) _G.AutoFarmSeaBeast = v end,
+    Callback = function(v)
+        _G.AutoFarmSeaBeast = v
+        if not v and not _G.AutoFarmLevel and not _G.AutoFarmMastery
+            and not _G.AutoFarmBoss then
+            stopFarmMovement()
+        end
+    end,
 })
 
 FarmBossSection:AddToggle("AutoFarmObs", {
@@ -1532,7 +1930,13 @@ RaidMainSection:AddToggle("AutoRaidFarmToggle", {
     Title = "Auto Farm trong Raid",
     Description = "Farm quái bên trong raid",
     Default = false,
-    Callback = function(v) _G.AutoRaidFarm = v end,
+    Callback = function(v)
+        _G.AutoRaidFarm = v
+        if not v and not _G.AutoFarmLevel and not _G.AutoFarmMastery
+            and not _G.AutoFarmBoss and not _G.AutoFarmSeaBeast then
+            stopFarmMovement()
+        end
+    end,
 })
 
 RaidMainSection:AddDropdown("RaidChipDrop", {
