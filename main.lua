@@ -1109,6 +1109,12 @@ local function attack()
     local char = Player.Character
     local tool = char and char:FindFirstChildOfClass("Tool")
     if not tool then
+        equipWeapon(_G.SelectWeapon or "Melee")
+        task.wait(0.05)
+        char = Player.Character
+        tool = char and char:FindFirstChildOfClass("Tool")
+    end
+    if not tool then
         lastAttackMethod = "Chưa trang bị vũ khí"
         return false
     end
@@ -1175,37 +1181,47 @@ end
 -- ====== Trang bị vũ khí theo loại ======
 local function equipWeapon(weaponType)
     pcall(function()
-        local backpack = Player.Backpack
+        local backpack = Player:FindFirstChild("Backpack")
         local char = Player.Character
-        if not char or not char:FindFirstChild("Humanoid") then return end
+        local humanoid = char and char:FindFirstChildOfClass("Humanoid")
+        if not backpack or not humanoid then return end
 
-        -- Kiểm tra đã trang bị đúng loại chưa
+        weaponType = weaponType or _G.SelectWeapon or "Melee"
+
+        -- Nếu nhân vật đã cầm đúng loại vũ khí trên tay
         local equipped = char:FindFirstChildOfClass("Tool")
         if equipped then
-            if weaponType == "Melee" and (table.find(MeleeNames, equipped.Name) or equipped.ToolTip == "Melee") then return end
-            if weaponType == "Sword" and (table.find(SwordNames, equipped.Name) or equipped.ToolTip == "Sword") then return end
-            if weaponType == "Gun" and (table.find(GunNames, equipped.Name) or equipped.ToolTip == "Gun") then return end
-            if weaponType == "Blox Fruit" and (equipped.ToolTip == "Blox Fruit" or equipped.Name:find("Fruit")) then return end
+            local eqName = equipped.Name
+            local eqTip = equipped.ToolTip or ""
+            if weaponType == "Melee" and (table.find(MeleeNames, eqName) or eqTip == "Melee" or eqName == "Combat" or eqTip:find("Melee")) then return end
+            if weaponType == "Sword" and (table.find(SwordNames, eqName) or eqTip == "Sword" or eqTip:find("Sword")) then return end
+            if weaponType == "Gun" and (table.find(GunNames, eqName) or eqTip == "Gun" or eqTip:find("Gun")) then return end
+            if weaponType == "Blox Fruit" and (eqTip == "Blox Fruit" or eqName:find("Fruit") or eqTip:find("Fruit")) then return end
         end
 
-        -- Tìm và trang bị vũ khí phù hợp
-        for _, tool in pairs(backpack:GetChildren()) do
+        -- Tìm trong Backpack vũ khí khớp với loại được chọn
+        for _, tool in ipairs(backpack:GetChildren()) do
             if tool:IsA("Tool") then
+                local tName = tool.Name
+                local tTip = tool.ToolTip or ""
                 local match = false
-                if weaponType == "Melee" and (table.find(MeleeNames, tool.Name) or tool.ToolTip == "Melee") then match = true end
-                if weaponType == "Sword" and (table.find(SwordNames, tool.Name) or tool.ToolTip == "Sword") then match = true end
-                if weaponType == "Gun" and (table.find(GunNames, tool.Name) or tool.ToolTip == "Gun") then match = true end
-                if weaponType == "Blox Fruit" and (tool.ToolTip == "Blox Fruit" or tool.Name:find("Fruit")) then match = true end
+                if weaponType == "Melee" and (table.find(MeleeNames, tName) or tTip == "Melee" or tName == "Combat" or tTip:find("Melee")) then match = true end
+                if weaponType == "Sword" and (table.find(SwordNames, tName) or tTip == "Sword" or tTip:find("Sword")) then match = true end
+                if weaponType == "Gun" and (table.find(GunNames, tName) or tTip == "Gun" or tTip:find("Gun")) then match = true end
+                if weaponType == "Blox Fruit" and (tTip == "Blox Fruit" or tName:find("Fruit") or tTip:find("Fruit")) then match = true end
+
                 if match then
-                    char.Humanoid:EquipTool(tool)
+                    humanoid:EquipTool(tool)
                     return
                 end
             end
         end
 
-        -- Nếu không tìm thấy, trang bị tool đầu tiên
+        -- Nếu không tìm thấy loại chỉ định, tự động cầm Tool đầu tiên có trong Backpack
         local fallback = backpack:FindFirstChildOfClass("Tool")
-        if fallback then char.Humanoid:EquipTool(fallback) end
+        if fallback then
+            humanoid:EquipTool(fallback)
+        end
     end)
 end
 
