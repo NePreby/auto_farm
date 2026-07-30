@@ -1,6 +1,6 @@
 local HAOTOOL_SOURCE = [========[
 local RuntimeEnv = getgenv and getgenv() or _G
-local RequestedScriptVersion = "2.2.3"
+local RequestedScriptVersion = "2.2.4"
 if RuntimeEnv.HAOTOOL_RUNNING then
     -- Khi người dùng bấm EXECUTE lại trong Delta X: Xóa giao diện cũ và dựng lại giao diện mới 100%
     if type(RuntimeEnv.HAOTOOL_DESTROY_UI) == "function" then
@@ -22,7 +22,7 @@ RuntimeEnv.HAOTOOL_TAB_COUNT = 0
 
 --[[
     ================================================================================
-    ⚡ HAOTOOL | BLOX FRUITS V2.2.3 — STABLE EDITION
+    ⚡ HAOTOOL | BLOX FRUITS V2.2.4 — STABLE EDITION
     --------------------------------------------------------------------------------
     Developer   : HAOTOOL Team
     UI Library  : Fluent (Dark Theme)
@@ -250,6 +250,7 @@ setDefault("HoldFarmPosition", true)
 setDefault("FreezeTarget", true)
 setDefault("AttackDelay", 0.05)
 setDefault("BackgroundAttack", true)
+setDefault("NoAttackAnimation", true)
 setDefault("HitboxSize", 12)
 setDefault("SafetyMode", true)
 setDefault("AutoSkill", false)
@@ -321,7 +322,7 @@ local TELEPORT_STATE_KEYS = {
     "AutoFarmObs", "AutoFarmBone", "AutoFarmFragment", "AutoFarmChest",
     "SelectWeapon", "FarmMethod", "SelectedMob",
     "BringMob", "BringRadius", "FarmHeight", "FarmDistance",
-    "HoldFarmPosition", "FreezeTarget", "AttackDelay", "BackgroundAttack", "HitboxSize",
+    "HoldFarmPosition", "FreezeTarget", "AttackDelay", "BackgroundAttack", "NoAttackAnimation", "HitboxSize",
     "SafetyMode", "AutoSkill", "SkillCooldown",
     "AutoRaid", "AutoRaidFarm", "AutoAwakening", "RaidChip",
     "AutoHaki", "AutoKen", "AutoObsV2", "AutoDodge",
@@ -811,6 +812,17 @@ local damageWatchTarget = nil
 local damageWatchHealth = nil
 local damageWatchStartedAt = 0
 local lastConfirmedDamageAt = 0
+local skillSequenceBusy = false
+local silentAnimator = nil
+local silentAnimationConnection = nil
+local suppressAttackAnimationUntil = 0
+
+local ACTION_ANIMATION_PRIORITIES = {
+    [Enum.AnimationPriority.Action] = true,
+    [Enum.AnimationPriority.Action2] = true,
+    [Enum.AnimationPriority.Action3] = true,
+    [Enum.AnimationPriority.Action4] = true,
+}
 
 -- Chỉ một chế độ được quyền di chuyển nhân vật tại một thời điểm.
 local function getActiveMovementMode()
@@ -1101,6 +1113,51 @@ local function resolveCombatController(force)
     return controller
 end
 
+-- Chỉ làm trong suốt animation đánh thường, không Stop track để marker damage vẫn được xử lý.
+local function bindSilentAnimationWatcher(humanoid)
+    local animator = humanoid and humanoid:FindFirstChildOfClass("Animator")
+    if not animator then return false end
+    if animator == silentAnimator and silentAnimationConnection then return true end
+
+    if silentAnimationConnection then
+        pcall(function() silentAnimationConnection:Disconnect() end)
+        silentAnimationConnection = nil
+    end
+
+    silentAnimator = animator
+    silentAnimationConnection = animator.AnimationPlayed:Connect(function(track)
+        if RuntimeEnv.HAOTOOL_RUN_TOKEN ~= CurrentRunToken then return end
+        task.defer(function()
+            if RuntimeEnv.HAOTOOL_RUN_TOKEN ~= CurrentRunToken then return end
+            if not _G.NoAttackAnimation or skillSequenceBusy then return end
+            if os.clock() > suppressAttackAnimationUntil then return end
+            if not ACTION_ANIMATION_PRIORITIES[track.Priority] then return end
+            pcall(function() track:AdjustWeight(0, 0) end)
+        end)
+    end)
+    return true
+end
+
+local function armSilentAttack(humanoid)
+    if not _G.NoAttackAnimation or skillSequenceBusy then return end
+    if bindSilentAnimationWatcher(humanoid) then
+        suppressAttackAnimationUntil = os.clock() + 0.18
+    end
+end
+
+local function restoreAttackAnimationWeights()
+    suppressAttackAnimationUntil = 0
+    local animator = silentAnimator
+    if not animator or not animator.Parent then return end
+    pcall(function()
+        for _, track in ipairs(animator:GetPlayingAnimationTracks()) do
+            if ACTION_ANIMATION_PRIORITIES[track.Priority] then
+                track:AdjustWeight(1, 0.05)
+            end
+        end
+    end)
+end
+
 -- Ưu tiên bộ điều khiển chiến đấu thật để đánh nền mà không chiếm chuột.
 local function attack()
     local now = os.clock()
@@ -1127,6 +1184,8 @@ local function attack()
 
     local char = Player.Character
     if not char then return false end
+    local humanoid = char:FindFirstChildOfClass("Humanoid")
+    armSilentAttack(humanoid)
     local tool = char:FindFirstChildOfClass("Tool")
     if not tool and equipWeapon then
         equipWeapon(_G.SelectWeapon or "Melee")
@@ -1187,7 +1246,8 @@ local function attack()
         if virtualOk then table.insert(methods, "VirtualUser") end
 
         -- Nếu chưa có damage, gửi click vào giữa màn hình nhưng chỉ khi menu đã đóng.
-        if noDamageFor >= 0.75 and RuntimeEnv.HAOTOOL_MENU_VISIBLE ~= true then
+        if noDamageFor >= 0.75
+            and (_G.BackgroundAttack == false or RuntimeEnv.HAOTOOL_MENU_VISIBLE ~= true) then
             sendingVirtualAttack = true
             local inputOk = pcall(function()
                 local camera = workspace.CurrentCamera
@@ -1224,7 +1284,6 @@ local function attack()
     return #methods > 0
 end-- ====== Auto Skill (dùng Z, X, C, V) ======
 local lastSkillTime = 0
-local skillSequenceBusy = false
 local function useSkills(force)
     if not force and not _G.AutoSkill then return end
     if skillSequenceBusy or userPointerActive or os.clock() < manualPointerPauseUntil
@@ -2969,6 +3028,12 @@ end)
 
 RuntimeEnv.HAOTOOL_DESTROY_UI = function()
     RuntimeEnv.HAOTOOL_MENU_VISIBLE = nil
+    restoreAttackAnimationWeights()
+    if silentAnimationConnection then
+        pcall(function() silentAnimationConnection:Disconnect() end)
+        silentAnimationConnection = nil
+    end
+    silentAnimator = nil
     pcall(function()
         if LauncherGui and LauncherGui.Parent then LauncherGui:Destroy() end
     end)
@@ -3237,6 +3302,16 @@ FarmPositionSection:AddToggle("BackgroundAttackToggle", {
     Description = "Ưu tiên CombatController thật, không chiếm chuột; tự dự phòng bằng Tool:Activate nếu executor không hỗ trợ.",
     Default = _G.BackgroundAttack,
     Callback = function(v) _G.BackgroundAttack = v end,
+})
+
+FarmPositionSection:AddToggle("NoAttackAnimationToggle", {
+    Title = "Ẩn animation đánh thường",
+    Description = "Ẩn chuyển động đấm/chém nhưng không dừng track damage; tự tạm nhường khi Auto Skill chạy.",
+    Default = _G.NoAttackAnimation,
+    Callback = function(v)
+        _G.NoAttackAnimation = v
+        if not v then restoreAttackAnimationWeights() end
+    end,
 })
 
 FarmPositionSection:AddSlider("AttackDelaySlider", {
@@ -4154,6 +4229,7 @@ if type(teleportState) == "table" and Fluent and Fluent.Options then
         FreezeTargetToggle = "FreezeTarget",
         SafetyModeToggle = "SafetyMode",
         BackgroundAttackToggle = "BackgroundAttack",
+        NoAttackAnimationToggle = "NoAttackAnimation",
         AttackDelaySlider = "AttackDelay",
         HitboxSizeSlider = "HitboxSize",
         BringMobToggle = "BringMob",
@@ -4236,7 +4312,7 @@ notify(
 )
 
 print("=====================================")
-print("⚡ HAOTOOL v2.2.3 — LOADED SUCCESSFULLY")
+print("⚡ HAOTOOL v2.2.4 — LOADED SUCCESSFULLY")
 print("🌊 Sea: " .. WorldSea)
 print("📌 RightControl to toggle GUI")
 print("=====================================")
