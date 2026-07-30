@@ -1,21 +1,28 @@
 --[[
     Blox Fruits Auto Farm & Helper Script for Delta X
     Developed by Antigravity - Professional Game Developer
-    
-    Tính năng:
-    - Auto Farm Level (Tự nhận quest, tự dịch chuyển, tự đánh)
-    - Auto Farm Quái Chỉ Định (Chọn quái thủ công trong menu)
-    - Auto Farm Rương (Nhặt rương vàng/bạc quanh bản đồ)
-    - Auto Stats (Tự nâng điểm chỉ số)
-    - Auto Fruit Finder (Dịch chuyển nhặt trái ác quỷ khi xuất hiện)
-    - Teleport (Di chuyển qua các đảo bằng Menu chọn đảo)
-    - Auto Gacha Fruit (Tự mua trái ngẫu nhiên từ Blox Fruit Dealer Cousin)
-    - Anti-AFK (Tránh bị ngắt kết nối khi treo máy)
+    Library: Rayfield UI (Tối ưu tuyệt đối cho Delta X & Mobile Executing)
 --]]
 
--- Khởi tạo Orion Library (UI thân thiện với thiết bị di động / Delta Executor)
-local OrionLib = loadstring(game:HttpGet(('https://raw.githubusercontent.com/jensonhirst/Orion/main/source')))()
-local Window = OrionLib:MakeWindow({Name = "Antigravity Hub | Blox Fruits UI", HidePremium = false, SaveConfig = true, ConfigFolder = "AntigravityBloxFruits"})
+-- Khởi tạo Rayfield Library (Thư viện UI hiện đại, mượt mà và hỗ trợ Delta X tốt nhất)
+local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
+
+local Window = Rayfield:CreateWindow({
+   Name = "Antigravity Hub | Blox Fruits",
+   LoadingTitle = "Antigravity Blox Fruits",
+   LoadingSubtitle = "by Antigravity Developer",
+   ConfigurationSaving = {
+      Enabled = true,
+      FolderName = "AntigravityHub",
+      FileName = "BloxFruitsConfig"
+   },
+   Discord = {
+      Enabled = false,
+      Invite = "",
+      RememberJoins = false
+   },
+   KeySystem = false
+})
 
 -- ==================== BIẾN CẤU HÌNH (SETTINGS) ====================
 _G.AutoFarm = false
@@ -37,7 +44,6 @@ local Player = Players.LocalPlayer
 local Character = Player.Character or Player.CharacterAdded:Wait()
 local TweenService = game:GetService("TweenService")
 
--- Đảm bảo Character luôn cập nhật
 Player.CharacterAdded:Connect(function(char)
     Character = char
 end)
@@ -70,19 +76,17 @@ local QuestsData = {
 
 -- ==================== CÁC HÀM TRỢ GIÚP (HELPER FUNCTIONS) ====================
 
--- Hàm dịch chuyển Tween mượt mà tránh Anticheat
 local function toTarget(targetCFrame)
     local character = Player.Character
     if not character or not character:FindFirstChild("HumanoidRootPart") then return end
     
     local rootPart = character.HumanoidRootPart
     local distance = (rootPart.Position - targetCFrame.Position).Magnitude
-    local speed = 250 -- Tốc độ chạy an toàn
+    local speed = 250
     
     local tweenInfo = TweenInfo.new(distance / speed, Enum.EasingStyle.Linear)
     local tween = TweenService:Create(rootPart, {CFrame = targetCFrame}, tweenInfo)
     
-    -- Tắt va chạm trong khi bay để không bị kẹt tường/núi
     for _, part in pairs(character:GetDescendants()) do
         if part:IsA("BasePart") and part.CanCollide then
             part.CanCollide = false
@@ -93,14 +97,12 @@ local function toTarget(targetCFrame)
     tween.Completed:Wait()
 end
 
--- Tự động đánh (Virtual Click)
 local function attack()
     local VirtualUser = game:GetService("VirtualUser")
     VirtualUser:CaptureController()
     VirtualUser:ClickButton1(Vector2.new(850, 520))
 end
 
--- Tự trang bị vũ khí
 local function equipWeapon(weaponType)
     local backpack = Player.Backpack
     local character = Player.Character
@@ -120,7 +122,6 @@ local function equipWeapon(weaponType)
     end
 end
 
--- Nhận thông tin nhiệm vụ dựa theo cấp độ
 local function getQuestData(level)
     for _, data in ipairs(QuestsData) do
         if level >= data.MinLevel and level <= data.MaxLevel then
@@ -130,7 +131,6 @@ local function getQuestData(level)
     return QuestsData[1]
 end
 
--- Tìm danh sách quái có trong server hiện tại để đưa vào menu chọn quái
 local function getEnemyList()
     local enemies = {}
     for _, mob in pairs(game.Workspace.Enemies:GetChildren()) do
@@ -138,7 +138,6 @@ local function getEnemyList()
             table.insert(enemies, mob.Name)
         end
     end
-    -- Nếu trống thì dùng các quái mặc định
     if #enemies == 0 then
         return {"Bandit", "Monkey", "Gorilla", "Pirate", "Desert Bandit", "Snow Bandit"}
     end
@@ -148,7 +147,7 @@ end
 -- ==================== LUỒNG CHẠY HỆ THỐNG (TASKS) ====================
 
 -- 1. Auto Farm Level
-spawn(function()
+task.spawn(function()
     while true do
         task.wait(0.1)
         if _G.AutoFarm then
@@ -184,8 +183,8 @@ spawn(function()
     end
 end)
 
--- 2. Auto Farm Quái Chỉ Định (Farm Mobs Selected)
-spawn(function()
+-- 2. Auto Farm Quái Chỉ Định
+task.spawn(function()
     while true do
         task.wait(0.1)
         if _G.AutoFarmSelectedMob and _G.SelectedMobName ~= "" then
@@ -211,8 +210,8 @@ spawn(function()
     end
 end)
 
--- 3. Auto Farm Rương (Chest Farm)
-spawn(function()
+-- 3. Auto Farm Rương
+task.spawn(function()
     while true do
         task.wait(0.1)
         if _G.AutoFarmChest then
@@ -228,10 +227,11 @@ spawn(function()
                 toTarget(targetChest.CFrame)
                 task.wait(0.2)
             else
-                OrionLib:MakeNotification({
-                    Name = "Chest Farm",
-                    Content = "Không tìm thấy rương nào trên bản đồ hiện tại. Đang tìm lại...",
-                    Time = 2
+                Rayfield:Notify({
+                    Title = "Chest Farm",
+                    Content = "Không tìm thấy rương nào trên bản đồ hiện tại.",
+                    Duration = 2,
+                    Image = 4483363465,
                 })
                 task.wait(2)
             end
@@ -240,7 +240,7 @@ spawn(function()
 end)
 
 -- 4. Auto Stats
-spawn(function()
+task.spawn(function()
     while true do
         task.wait(0.5)
         if _G.AutoStats then
@@ -253,16 +253,17 @@ spawn(function()
 end)
 
 -- 5. Auto Fruit Finder
-spawn(function()
+task.spawn(function()
     while true do
         task.wait(1)
         if _G.AutoFruit then
             for _, obj in pairs(game.Workspace:GetChildren()) do
                 if obj:IsA("Tool") and (obj.Name:find("Fruit") or obj:FindFirstChild("Handle")) then
-                    OrionLib:MakeNotification({
-                        Name = "Fruit Finder",
+                    Rayfield:Notify({
+                        Title = "Fruit Finder",
                         Content = "Đã tìm thấy: " .. obj.Name .. ". Dịch chuyển ngay!",
-                        Time = 5
+                        Duration = 5,
+                        Image = 4483363465,
                     })
                     if obj:FindFirstChild("Handle") then
                         toTarget(obj.Handle.CFrame)
@@ -275,7 +276,7 @@ spawn(function()
 end)
 
 -- 6. Auto Gacha Fruit
-spawn(function()
+task.spawn(function()
     while true do
         task.wait(5)
         if _G.AutoGacha then
@@ -285,216 +286,193 @@ spawn(function()
     end
 end)
 
+-- ==================== GIAO DIỆN CHỌN CHỨC NĂNG (RAYFIELD UI) ====================
 
--- ==================== GIAO DIỆN CHỌN CHỨC NĂNG (GUI) ====================
+-- 1. TAB AUTO FARM
+local FarmTab = Window:CreateTab("Auto Farm", 4483363465)
+FarmTab:CreateSection("Tự Động Farm Level & Quái")
 
--- 1. Tab Auto Farm
-local FarmTab = Window:MakeTab({
-    Name = "Auto Farm",
-    Icon = "rbxassetid://4483345998",
-    PremiumOnly = false
-})
-
-FarmTab:AddSection({
-    Name = "Tự Động Farm Level / Quái"
-})
-
-FarmTab:AddToggle({
-    Name = "Auto Farm Level",
-    Default = false,
-    Callback = function(state)
-        _G.AutoFarm = state
-    end
+FarmTab:CreateToggle({
+   Name = "Auto Farm Level",
+   CurrentValue = false,
+   Flag = "AutoFarm",
+   Callback = function(Value)
+      _G.AutoFarm = Value
+   end,
 })
 
 local enemyList = getEnemyList()
-local MobDropdown = FarmTab:AddDropdown({
-    Name = "Chọn Quái Để Farm",
-    Default = "",
-    Options = enemyList,
-    Callback = function(currentOption)
-        _G.SelectedMobName = currentOption
-    end
+local MobDropdown = FarmTab:CreateDropdown({
+   Name = "Chọn Quái Để Farm",
+   Options = enemyList,
+   CurrentOption = {enemyList[1] or "Bandit"},
+   MultipleOptions = false,
+   Flag = "MobDropdown",
+   Callback = function(Option)
+      _G.SelectedMobName = type(Option) == "table" and Option[1] or Option
+   end,
 })
 
-FarmTab:AddButton({
-    Name = "Làm Mới Danh Sách Quái",
-    Callback = function()
-        local newList = getEnemyList()
-        MobDropdown:Refresh(newList, true)
-    end
+FarmTab:CreateButton({
+   Name = "Làm Mới Danh Sách Quái",
+   Callback = function()
+      local newList = getEnemyList()
+      MobDropdown:Refresh(newList, true)
+   end,
 })
 
-FarmTab:AddToggle({
-    Name = "Auto Farm Quái Đã Chọn",
-    Default = false,
-    Callback = function(state)
-        _G.AutoFarmSelectedMob = state
-    end
+FarmTab:CreateToggle({
+   Name = "Auto Farm Quái Đã Chọn",
+   CurrentValue = false,
+   Flag = "AutoFarmMob",
+   Callback = function(Value)
+      _G.AutoFarmSelectedMob = Value
+   end,
 })
 
-FarmTab:AddDropdown({
-    Name = "Chọn Vũ Khí Sử Dụng",
-    Default = "Melee",
-    Options = {"Melee", "Sword", "Blox Fruit"},
-    Callback = function(currentOption)
-        _G.SelectWeapon = currentOption
-    end
+FarmTab:CreateDropdown({
+   Name = "Chọn Vũ Khí Sử Dụng",
+   Options = {"Melee", "Sword", "Blox Fruit"},
+   CurrentOption = {"Melee"},
+   MultipleOptions = false,
+   Flag = "WeaponDropdown",
+   Callback = function(Option)
+      _G.SelectWeapon = type(Option) == "table" and Option[1] or Option
+   end,
 })
 
-FarmTab:AddToggle({
-    Name = "Auto Farm Rương",
-    Default = false,
-    Callback = function(state)
-        _G.AutoFarmChest = state
-    end
+FarmTab:CreateToggle({
+   Name = "Auto Farm Rương (Beli)",
+   CurrentValue = false,
+   Flag = "AutoChest",
+   Callback = function(Value)
+      _G.AutoFarmChest = Value
+   end,
 })
 
-
--- 2. Tab Dịch Chuyển (Teleport)
-local TeleportTab = Window:MakeTab({
-    Name = "Dịch Chuyển",
-    Icon = "rbxassetid://4483345998",
-    PremiumOnly = false
-})
-
-TeleportTab:AddSection({
-    Name = "Chọn Đảo Cần Bay Tới"
-})
+-- 2. TAB DỊCH CHUYỂN
+local TeleportTab = Window:CreateTab("Dịch Chuyển", 4483363465)
+TeleportTab:CreateSection("Chọn Đảo Cần Bay Tới")
 
 local islandNames = {}
 for name, _ in pairs(IslandsData) do
     table.insert(islandNames, name)
 end
 
-TeleportTab:AddDropdown({
-    Name = "Chọn Đảo Đích",
-    Default = "Starter Island",
-    Options = islandNames,
-    Callback = function(currentOption)
-        _G.SelectedIsland = currentOption
-    end
+TeleportTab:CreateDropdown({
+   Name = "Chọn Đảo Đích",
+   Options = islandNames,
+   CurrentOption = {"Starter Island"},
+   MultipleOptions = false,
+   Flag = "IslandDropdown",
+   Callback = function(Option)
+      _G.SelectedIsland = type(Option) == "table" and Option[1] or Option
+   end,
 })
 
-TeleportTab:AddButton({
-    Name = "Bắt Đầu Bay",
-    Callback = function()
-        local targetPos = IslandsData[_G.SelectedIsland]
-        if targetPos then
-            OrionLib:MakeNotification({
-                Name = "Dịch Chuyển",
-                Content = "Đang bay tới " .. _G.SelectedIsland,
-                Time = 3
-            })
-            toTarget(CFrame.new(targetPos))
-        end
-    end
+TeleportTab:CreateButton({
+   Name = "Bắt Đầu Bay Tới Đảo",
+   Callback = function()
+      local targetPos = IslandsData[_G.SelectedIsland]
+      if targetPos then
+          Rayfield:Notify({
+              Title = "Dịch Chuyển",
+              Content = "Đang bay tới " .. _G.SelectedIsland,
+              Duration = 3,
+              Image = 4483363465,
+          })
+          toTarget(CFrame.new(targetPos))
+      end
+   end,
 })
 
+-- 3. TAB CHỈ SỐ (STATS)
+local StatsTab = Window:CreateTab("Chỉ Số (Stats)", 4483363465)
+StatsTab:CreateSection("Tự Động Nâng Điểm Tiềm Năng")
 
--- 3. Tab Chỉ Số (Stats)
-local StatsTab = Window:MakeTab({
-    Name = "Chỉ Số (Stats)",
-    Icon = "rbxassetid://4483345998",
-    PremiumOnly = false
+StatsTab:CreateToggle({
+   Name = "Tự Động Cộng Điểm",
+   CurrentValue = false,
+   Flag = "AutoStats",
+   Callback = function(Value)
+      _G.AutoStats = Value
+   end,
 })
 
-StatsTab:AddSection({
-    Name = "Tự Động Nâng Chỉ Số"
+StatsTab:CreateDropdown({
+   Name = "Chọn Chỉ Số Ưu Tiên",
+   Options = {"Melee", "Defense", "Sword", "Gun", "Blox Fruit"},
+   CurrentOption = {"Melee"},
+   MultipleOptions = false,
+   Flag = "StatDropdown",
+   Callback = function(Option)
+      _G.StatToUpgrade = type(Option) == "table" and Option[1] or Option
+   end,
 })
 
-StatsTab:AddToggle({
-    Name = "Tự Động Cộng Điểm",
-    Default = false,
-    Callback = function(state)
-        _G.AutoStats = state
-    end
+-- 4. TAB TRÁI ÁC QUỶ (FRUITS)
+local FruitTab = Window:CreateTab("Trái Ác Quỷ", 4483363465)
+FruitTab:CreateSection("Trợ Năng Trái Ác Quỷ")
+
+FruitTab:CreateToggle({
+   Name = "Auto Tìm Trái Ác Quỷ (Fruit Finder)",
+   CurrentValue = false,
+   Flag = "AutoFruit",
+   Callback = function(Value)
+      _G.AutoFruit = Value
+   end,
 })
 
-StatsTab:AddDropdown({
-    Name = "Chọn Chỉ Số Nâng",
-    Default = "Melee",
-    Options = {"Melee", "Defense", "Sword", "Gun", "Blox Fruit"},
-    Callback = function(currentOption)
-        _G.StatToUpgrade = currentOption
-    end
+FruitTab:CreateToggle({
+   Name = "Auto Gacha Fruit (Dealer Cousin)",
+   CurrentValue = false,
+   Flag = "AutoGacha",
+   Callback = function(Value)
+      _G.AutoGacha = Value
+   end,
 })
 
+-- 5. TAB HỆ THỐNG
+local SystemTab = Window:CreateTab("Hệ Thống", 4483363465)
+SystemTab:CreateSection("Tối Ưu Game & Anti-AFK")
 
--- 4. Tab Trái Ác Quỷ (Fruits)
-local FruitTab = Window:MakeTab({
-    Name = "Trái Ác Quỷ",
-    Icon = "rbxassetid://4483345998",
-    PremiumOnly = false
+SystemTab:CreateButton({
+   Name = "Tối Ưu FPS (Làm Mượt)",
+   Callback = function()
+      for _, obj in pairs(game:GetDescendants()) do
+          if obj:IsA("BasePart") or obj:IsA("MeshPart") then
+              obj.Material = Enum.Material.SmoothPlastic
+          elseif obj:IsA("Decal") or obj:IsA("Texture") then
+              obj:Destroy()
+          end
+      end
+      Rayfield:Notify({
+          Title = "Tối Ưu Hóa",
+          Content = "Đã bật chế độ mượt FPS!",
+          Duration = 3,
+          Image = 4483363465,
+      })
+   end,
 })
 
-FruitTab:AddSection({
-    Name = "Trợ Năng Trái Ác Quỷ"
+SystemTab:CreateButton({
+   Name = "Sao Chép Link Discord",
+   Callback = function()
+      setclipboard("https://discord.gg/antigravity-hub")
+      Rayfield:Notify({
+          Title = "Hệ thống",
+          Content = "Đã sao chép link Discord vào Clipboard!",
+          Duration = 3,
+          Image = 4483363465,
+      })
+   end,
 })
 
-FruitTab:AddToggle({
-    Name = "Auto Tìm Trái Ác Quỷ",
-    Default = false,
-    Callback = function(state)
-        _G.AutoFruit = state
-    end
-})
-
-FruitTab:AddToggle({
-    Name = "Auto Gacha Fruit",
-    Default = false,
-    Callback = function(state)
-        _G.AutoGacha = state
-    end
-})
-
-
--- 5. Tab Hệ Thống & Tránh AFK
-local SystemTab = Window:MakeTab({
-    Name = "Hệ Thống",
-    Icon = "rbxassetid://4483345998",
-    PremiumOnly = false
-})
-
-SystemTab:AddSection({
-    Name = "Tính Năng Bổ Trợ"
-})
-
-SystemTab:AddButton({
-    Name = "Tối Ưu FPS (Làm Mượt)",
-    Callback = function()
-        for _, obj in pairs(game:GetDescendants()) do
-            if obj:IsA("BasePart") or obj:IsA("MeshPart") then
-                obj.Material = Enum.Material.SmoothPlastic
-            elseif obj:IsA("Decal") or obj:IsA("Texture") then
-                obj:Destroy()
-            end
-        end
-        OrionLib:MakeNotification({
-            Name = "Tối Ưu Hóa",
-            Content = "Đã bật chế độ mượt FPS!",
-            Time = 3
-        })
-    end
-})
-
-SystemTab:AddButton({
-    Name = "Sao Chép Link Hỗ Trợ Discord",
-    Callback = function()
-        setclipboard("https://discord.gg/antigravity-hub")
-        OrionLib:MakeNotification({
-            Name = "Hệ thống",
-            Content = "Đã sao chép link Discord vào Clipboard!",
-            Time = 3
-        })
-    end
-})
-
--- Kích hoạt Anti-AFK
+-- Anti-AFK
 local VirtualUser = game:GetService("VirtualUser")
 Player.Idled:Connect(function()
     VirtualUser:CaptureController()
     VirtualUser:ClickButton2(Vector2.new(0,0))
 end)
 
-OrionLib:Init()
+Rayfield:LoadConfiguration()
