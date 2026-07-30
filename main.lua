@@ -2,21 +2,9 @@ local HAOTOOL_SOURCE = [========[
 local RuntimeEnv = getgenv and getgenv() or _G
 local RequestedScriptVersion = "2.1.3"
 if RuntimeEnv.HAOTOOL_RUNNING then
-    local sameCompleteVersion = RuntimeEnv.HAOTOOL_SCRIPT_VERSION == RequestedScriptVersion
-        and RuntimeEnv.HAOTOOL_UI_READY == true
-        and RuntimeEnv.HAOTOOL_TAB_COUNT == 9
-    if sameCompleteVersion then
-        if type(RuntimeEnv.HAOTOOL_TOGGLE_MENU) == "function" then
-            pcall(RuntimeEnv.HAOTOOL_TOGGLE_MENU)
-        end
-        return
-    end
-
-    -- Phiên cũ hoặc giao diện dựng thiếu tab luôn bị thay mới hoàn toàn.
+    -- Khi người dùng bấm EXECUTE lại trong Delta X: Xóa giao diện cũ và dựng lại giao diện mới 100%
     if type(RuntimeEnv.HAOTOOL_DESTROY_UI) == "function" then
         pcall(RuntimeEnv.HAOTOOL_DESTROY_UI)
-    elseif type(RuntimeEnv.HAOTOOL_TOGGLE_MENU) == "function" then
-        pcall(RuntimeEnv.HAOTOOL_TOGGLE_MENU)
     end
     RuntimeEnv.HAOTOOL_RUN_TOKEN = {}
     RuntimeEnv.HAOTOOL_RUNNING = nil
@@ -109,16 +97,19 @@ end
 
 local Fluent, SaveManager, InterfaceManager
 
+-- Nạp thư viện Fluent với URL tương thích Delta X Mobile / PC
 local ok1, err1 = pcall(function()
-    Fluent = loadstring(game:HttpGet("https://github.com/dawid-scripts/Fluent/releases/latest/download/main.lua"))()
+    Fluent = loadstring(game:HttpGet("https://raw.githubusercontent.com/dawid-scripts/Fluent/master/main.lua"))()
 end)
-if not ok1 then
-    warn("[HAOTOOL] Không load được Fluent: " .. tostring(err1))
-    -- Fallback: thử Rayfield nếu Fluent lỗi
+if not ok1 or not Fluent then
     pcall(function()
-        Fluent = loadstring(game:HttpGet("https://sirius.menu/rayfield"))()
+        Fluent = loadstring(game:HttpGet("https://github.com/dawid-scripts/Fluent/releases/latest/download/main.lua"))()
     end)
-    if not Fluent then return end
+end
+
+if not Fluent then
+    warn("[HAOTOOL] Không nạp được Fluent UI: " .. tostring(err1))
+    return
 end
 
 pcall(function()
