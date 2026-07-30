@@ -1,6 +1,6 @@
 local HAOTOOL_SOURCE = [========[
 local RuntimeEnv = getgenv and getgenv() or _G
-local RequestedScriptVersion = "2.2.6"
+local RequestedScriptVersion = "2.3.0"
 if RuntimeEnv.HAOTOOL_RUNNING then
     -- Khi người dùng bấm EXECUTE lại trong Delta X: Xóa giao diện cũ và dựng lại giao diện mới 100%
     if type(RuntimeEnv.HAOTOOL_DESTROY_UI) == "function" then
@@ -22,7 +22,7 @@ RuntimeEnv.HAOTOOL_TAB_COUNT = 0
 
 --[[
     ================================================================================
-    ⚡ HAOTOOL | BLOX FRUITS V2.2.6 — STABLE EDITION
+    ⚡ HAOTOOL | BLOX FRUITS V2.3.0 — STABLE EDITION
     --------------------------------------------------------------------------------
     Developer   : HAOTOOL Team
     UI Library  : Fluent (Dark Theme)
@@ -301,6 +301,7 @@ setDefault("AntiAFK", true)
 setDefault("AutoStats", false)
 setDefault("StatToUpgrade", "Melee")
 setDefault("ServerHopNoFruit", false)
+setDefault("LowServerMaxPlayers", 5)
 
 -- Teleport
 setDefault("SelectedIsland", "")
@@ -336,7 +337,7 @@ local TELEPORT_STATE_KEYS = {
     "ESPIsland", "ESPDistance", "ESPTeamCheck",
     "WalkSpeedHack", "WalkSpeedVal", "JumpPowerHack", "JumpPowerVal",
     "InfiniteJump", "InfiniteEnergy", "AntiAFK",
-    "AutoStats", "StatToUpgrade", "ServerHopNoFruit",
+    "AutoStats", "StatToUpgrade", "ServerHopNoFruit", "LowServerMaxPlayers",
     "SelectedIsland", "SelectedNPC", "SelectedBossTP",
 }
 
@@ -1916,26 +1917,95 @@ local function getBossData(bossName)
     return nil
 end
 
--- ====== Server Hop ======
-local function serverHop()
-    pcall(function()
-        local servers = {}
-        local req = game:HttpGet(
-            "https://games.roblox.com/v1/games/" .. game.PlaceId .. "/servers/Public?sortOrder=Asc&limit=100"
-        )
-        local data = game:GetService("HttpService"):JSONDecode(req)
-        if data and data.data then
-            for _, sv in ipairs(data.data) do
-                if sv.playing < sv.maxPlayers and sv.id ~= game.JobId then
-                    table.insert(servers, sv.id)
+local function getBossStatusList(bossNames)
+    local labels, labelToName, nameToLabel = {}, {}, {}
+    local aliveNames = {}
+
+    for _, bossName in ipairs(bossNames or getBossList()) do
+        local boss = findBoss(bossName)
+        local label
+        if boss then
+            label = "🟢 " .. bossName .. " — Đang xuất hiện"
+            table.insert(aliveNames, bossName)
+        else
+            label = "⚫ " .. bossName .. " — Chưa xuất hiện"
+        end
+        table.insert(labels, label)
+        labelToName[label] = bossName
+        nameToLabel[bossName] = label
+    end
+
+    local summary = "Đang xuất hiện: " .. #aliveNames .. "/" .. #labels
+    if #aliveNames > 0 then
+        summary = summary .. "\n🟢 " .. table.concat(aliveNames, ", ")
+    else
+        summary = summary .. "\nHiện chưa có Trùm nào trong máy chủ."
+    end
+    return labels, labelToName, nameToLabel, summary, table.concat(labels, "\n")
+end
+
+-- ====== Chuyển máy chủ, ưu tiên máy chủ ít người ======
+local serverHopBusy = false
+local function serverHop(preferLowPopulation, wantedMaximum)
+    if serverHopBusy then return false, "Hệ thống đang tìm máy chủ." end
+    serverHopBusy = true
+
+    local ok, result = pcall(function()
+        local available, visitedFallback = {}, {}
+        local visited = RuntimeEnv.HAOTOOL_VISITED_SERVERS or {}
+        RuntimeEnv.HAOTOOL_VISITED_SERVERS = visited
+        local cursor = nil
+
+        -- Đọc tối đa 300 máy chủ công khai rồi sắp theo số người và độ trễ.
+        for _ = 1, 3 do
+            local url = "https://games.roblox.com/v1/games/" .. game.PlaceId
+                .. "/servers/Public?sortOrder=Asc&limit=100"
+            if cursor and cursor ~= "" then
+                url = url .. "&cursor=" .. HttpService:UrlEncode(cursor)
+            end
+
+            local data = HttpService:JSONDecode(game:HttpGet(url, true))
+            for _, server in ipairs(data.data or {}) do
+                if server.id ~= game.JobId and server.playing < server.maxPlayers then
+                    table.insert(visited[server.id] and visitedFallback or available, server)
                 end
             end
+            cursor = data.nextPageCursor
+            if not cursor or cursor == "" then break end
         end
-        if #servers > 0 then
-            local chosen = servers[math.random(1, #servers)]
-            game:GetService("TeleportService"):TeleportToPlaceInstance(game.PlaceId, chosen, Player)
+
+        local candidates = #available > 0 and available or visitedFallback
+        table.sort(candidates, function(a, b)
+            if a.playing == b.playing then
+                return (tonumber(a.ping) or math.huge) < (tonumber(b.ping) or math.huge)
+            end
+            return a.playing < b.playing
+        end)
+        if #candidates == 0 then error("Không tìm thấy máy chủ còn chỗ trống.") end
+
+        local chosen = nil
+        if preferLowPopulation then
+            local maximum = math.clamp(tonumber(wantedMaximum) or 5, 1, 12)
+            for _, server in ipairs(candidates) do
+                if server.playing <= maximum then
+                    chosen = server
+                    break
+                end
+            end
+            chosen = chosen or candidates[1]
+        else
+            chosen = candidates[math.random(1, math.min(#candidates, 20))]
         end
+
+        visited[chosen.id] = true
+        saveTeleportState()
+        TeleportService:TeleportToPlaceInstance(game.PlaceId, chosen.id, Player)
+        return chosen
     end)
+
+    serverHopBusy = false
+    if not ok then return false, tostring(result) end
+    return true, result
 end
 
 -- ====== Notify helper ======
@@ -2011,7 +2081,7 @@ local function startSelectedRaid()
     if WorldSea == 1 or level < 1100 then
         if now - lastRaidCapabilityWarning >= 15 then
             lastRaidCapabilityWarning = now
-            notify("Raid chưa mở khóa", "Cần đạt cấp 1100 và ở Sea 2 hoặc Sea 3 để tự mua chip raid.", 6)
+            notify("Đột kích chưa mở khóa", "Cần đạt cấp 1100 và ở Biển 2 hoặc Biển 3 để tự mua chip.", 6)
         end
         return false
     end
@@ -2030,7 +2100,7 @@ local function startSelectedRaid()
 
     if now - lastRaidCapabilityWarning >= 15 then
         lastRaidCapabilityWarning = now
-        notify("Raid cần thao tác", "Đã mua chip nhưng executor không bấm được nút raid; hãy đứng tại phòng raid và bấm nút một lần.", 6)
+        notify("Đột kích cần thao tác", "Đã mua chip nhưng trình thực thi không bấm được nút; hãy đứng tại phòng đột kích và bấm nút một lần.", 6)
     end
     return false
 end
@@ -2327,7 +2397,7 @@ task.spawn(function()
                 if WorldSea == 1 then
                     if os.clock() - lastSeaBeastWarning >= 15 then
                         lastSeaBeastWarning = os.clock()
-                        notify("Sea Beast", "Sea Beast chỉ xuất hiện tại vùng biển Sea 2 và Sea 3.", 5)
+                        notify("Quái biển", "Quái biển chỉ xuất hiện tại Biển 2 và Biển 3.", 5)
                     end
                     return
                 end
@@ -2401,7 +2471,7 @@ task.spawn(function()
                 if WorldSea ~= 3 then
                     if os.clock() - lastBoneWarning >= 12 then
                         lastBoneWarning = os.clock()
-                        notify("Farm Bone", "Bone chỉ farm ổn định tại Haunted Castle ở Sea 3.", 5)
+                        notify("Kiếm Xương", "Chỉ kiếm Xương ổn định tại Lâu đài ma ở Biển 3.", 5)
                     end
                     return
                 end
@@ -2592,7 +2662,7 @@ task.spawn(function()
                     res = ReplicatedStorage.Remotes.CommF_:InvokeServer("Cousin", "Buy")
                 end)
                 local msg = tostring(res or "Đã gửi yêu cầu mua trái ngẫu nhiên.")
-                notify("🎰 Gacha Fruit", msg, 6)
+                notify("🎰 Mua Trái ngẫu nhiên", msg, 6)
             end)
         end
     end
@@ -2794,9 +2864,9 @@ task.spawn(function()
             runFeature("Server Hop Fruit", function()
                 local hasFruit = #getSpawnedFruits() > 0
                 if not hasFruit then
-                    notify("🔄 Server Hop", "Không có trái, đang chuyển server...", 3)
+                    notify("Đổi máy chủ", "Không có Trái, đang chuyển máy chủ ít người...", 3)
                     task.wait(2)
-                    serverHop()
+                    serverHop(true, _G.LowServerMaxPlayers)
                 end
             end)
         end
@@ -2808,7 +2878,7 @@ Player.CharacterAdded:Connect(function(char)
     if RuntimeEnv.HAOTOOL_RUN_TOKEN ~= CurrentRunToken then return end
     task.wait(1)
     if _G.AutoFarmLevel or _G.AutoFarmMastery or _G.AutoFarmBoss then
-        notify("💀 Đã Hồi Sinh", "Tiếp tục farm...", 3)
+        notify("💀 Đã hồi sinh", "Tiếp tục hoạt động tự động...", 3)
     end
 end)
 
@@ -2878,7 +2948,7 @@ local function buildMainInterface()
 RuntimeEnv.HAOTOOL_MENU_VISIBLE = true
 local Window = Fluent:CreateWindow({
     Title    = "HAOTOOL  •  BLOX FRUITS",
-    SubTitle = "V" .. RequestedScriptVersion .. "  •  Sea " .. WorldSea .. "  |  Control Center",
+    SubTitle = "V" .. RequestedScriptVersion .. "  •  Biển " .. WorldSea .. "  |  Trung tâm điều khiển",
     TabWidth = 170,
     Size     = UDim2.fromOffset(720, 540),
     Acrylic  = true,
@@ -3180,17 +3250,71 @@ end
 -- Tạo tuần tự toàn bộ tab trước khi thêm điều khiển.
 local UITabs = {}
 UITabs.Main = addTabSafe("Tổng quan", "Tổng quan")
-UITabs.Farm = addTabSafe("Farm", "Tự động farm")
-UITabs.Raid = addTabSafe("Raid", "Đột kích")
-UITabs.Fruit = addTabSafe("Fruit", "Trái ác quỷ")
-UITabs.ESP = addTabSafe("ESP", "Hiển thị ESP")
+UITabs.Farm = addTabSafe("Luyện cấp", "Tự động luyện cấp")
+UITabs.Raid = addTabSafe("Đột kích", "Đột kích")
+UITabs.Fruit = addTabSafe("Trái ác quỷ", "Trái ác quỷ")
+UITabs.ESP = addTabSafe("Đánh dấu", "Đánh dấu đối tượng")
 UITabs.Teleport = addTabSafe("Di chuyển", "Di chuyển")
 UITabs.Combat = addTabSafe("Chiến đấu", "Chiến đấu")
 UITabs.Misc = addTabSafe("Tiện ích", "Tiện ích")
 UITabs.Settings = addTabSafe("Cài đặt", "Cài đặt")
 RuntimeEnv.HAOTOOL_TAB_COUNT = createdTabCount
-local currentBossNames = getBossList()
+local currentBossNames = {}
+local bossStatusLabels = {}
+local bossStatusLabelToName = {}
+local bossNameToStatusLabel = {}
+local bossStatusSummary = ""
+local bossStatusSignature = ""
+local bossStatusParagraph = nil
+local refreshBossInterface = nil
 local islandNames
+
+local weaponLabels = {"Cận chiến", "Kiếm", "Súng", "Trái ác quỷ"}
+local weaponLabelToValue = {
+    ["Cận chiến"] = "Melee",
+    ["Kiếm"] = "Sword",
+    ["Súng"] = "Gun",
+    ["Trái ác quỷ"] = "Blox Fruit",
+}
+local weaponValueToLabel = {
+    ["Melee"] = "Cận chiến",
+    ["Sword"] = "Kiếm",
+    ["Gun"] = "Súng",
+    ["Blox Fruit"] = "Trái ác quỷ",
+}
+local farmMethodLabels = {"Nhiệm vụ", "Quái gần nhất", "Quái đã chọn"}
+local farmMethodLabelToValue = {
+    ["Nhiệm vụ"] = "Quest",
+    ["Quái gần nhất"] = "Nearest",
+    ["Quái đã chọn"] = "Selected Mob",
+}
+local farmMethodValueToLabel = {
+    ["Quest"] = "Nhiệm vụ",
+    ["Nearest"] = "Quái gần nhất",
+    ["Selected Mob"] = "Quái đã chọn",
+}
+local statLabels = {"Cận chiến", "Phòng thủ", "Kiếm", "Súng", "Trái ác quỷ"}
+local statLabelToValue = {
+    ["Cận chiến"] = "Melee",
+    ["Phòng thủ"] = "Defense",
+    ["Kiếm"] = "Sword",
+    ["Súng"] = "Gun",
+    ["Trái ác quỷ"] = "Blox Fruit",
+}
+local statValueToLabel = {
+    ["Melee"] = "Cận chiến",
+    ["Defense"] = "Phòng thủ",
+    ["Sword"] = "Kiếm",
+    ["Gun"] = "Súng",
+    ["Blox Fruit"] = "Trái ác quỷ",
+}
+
+local function refreshBossCache()
+    currentBossNames = getBossList()
+    bossStatusLabels, bossStatusLabelToName, bossNameToStatusLabel,
+        bossStatusSummary, bossStatusSignature = getBossStatusList(currentBossNames)
+end
+refreshBossCache()
 
 local MainTab = UITabs.Main
 runFeature("Giao diện Tổng quan", function()
@@ -3210,14 +3334,39 @@ MainTab:AddParagraph({
 })
 MainTab:AddParagraph({
     Title = "⚡  Xin chào, " .. Player.DisplayName,
-    Content = "SEA  " .. WorldSea
-        .. "    •    LEVEL  " .. tostring(getPlayerLevel())
-        .. "    •    BELI  " .. tostring(getPlayerBeli())
-        .. "\nServer  " .. game.JobId:sub(1, 8) .. "..."
+    Content = "BIỂN  " .. WorldSea
+        .. "    •    CẤP  " .. tostring(getPlayerLevel())
+        .. "    •    TIỀN  " .. tostring(getPlayerBeli())
+        .. "\nMáy chủ  " .. game.JobId:sub(1, 8) .. "..."
         .. "\n\nRightControl hoặc nút H  •  Ẩn / hiện bảng điều khiển"
 })
 
 local ServerSection = MainTab:AddSection("Kết nối máy chủ")
+
+ServerSection:AddParagraph({
+    Title = "Máy chủ hiện tại",
+    Content = tostring(#Players:GetPlayers()) .. " người đang chơi",
+})
+
+ServerSection:AddSlider("LowServerMaxPlayersSlider", {
+    Title = "Số người tối đa mong muốn",
+    Description = "Hệ thống ưu tiên máy chủ có số người bằng hoặc thấp hơn mức này.",
+    Min = 1,
+    Max = 12,
+    Default = _G.LowServerMaxPlayers,
+    Rounding = 0,
+    Callback = function(v) _G.LowServerMaxPlayers = v end,
+})
+
+ServerSection:AddButton({
+    Title = "Chuyển sang máy chủ ít người",
+    Description = "Quét tối đa 300 máy chủ và chọn máy có ít người nhất.",
+    Callback = function()
+        notify("Đổi máy chủ", "Đang tìm máy chủ ít người...", 3)
+        local ok, message = serverHop(true, _G.LowServerMaxPlayers)
+        if not ok then notify("Không thể đổi máy chủ", tostring(message), 5) end
+    end,
+})
 
 ServerSection:AddButton({
     Title = "Vào lại máy chủ",
@@ -3230,10 +3379,10 @@ ServerSection:AddButton({
 })
 
 ServerSection:AddButton({
-    Title = "Tìm máy chủ mới",
-    Description = "Chuyển sang một máy chủ khác.",
+    Title = "Chuyển máy chủ ngẫu nhiên",
+    Description = "Chuyển sang một máy chủ công khai khác.",
     Callback = function()
-        notify("🔄 Server Hop", "Đang tìm server...", 3)
+        notify("Đổi máy chủ", "Đang tìm máy chủ...", 3)
         serverHop()
     end
 })
@@ -3252,7 +3401,7 @@ end)
 local FarmTab = UITabs.Farm
 runFeature("Giao diện Farm", function()
 
-local FarmCoreSection = FarmTab:AddSection("Nâng cấp & Mastery")
+local FarmCoreSection = FarmTab:AddSection("Luyện cấp và thông thạo")
 local changingCoreFarmMode = false
 
 local function disableOtherCoreFarm(optionId, globalKey)
@@ -3264,8 +3413,8 @@ local function disableOtherCoreFarm(optionId, globalKey)
 end
 
 FarmCoreSection:AddToggle("AutoFarmLevel", {
-    Title = "Auto Farm Level",
-    Description = "Tự động nhận quest → farm quái → lên level",
+    Title = "Tự động luyện cấp",
+    Description = "Tự động nhận nhiệm vụ → đánh quái → lên cấp",
     Default = _G.AutoFarmLevel,
     Callback = function(v)
         _G.AutoFarmLevel = v
@@ -3286,8 +3435,8 @@ FarmCoreSection:AddToggle("AutoFarmLevel", {
 })
 
 FarmCoreSection:AddToggle("AutoFarmMastery", {
-    Title = "Auto Farm Mastery",
-    Description = "Farm mastery cho vũ khí được chọn",
+    Title = "Tự động luyện thông thạo",
+    Description = "Tự động tăng thông thạo cho vũ khí được chọn",
     Default = _G.AutoFarmMastery,
     Callback = function(v)
         _G.AutoFarmMastery = v
@@ -3304,24 +3453,24 @@ FarmCoreSection:AddToggle("AutoFarmMastery", {
 })
 
 FarmCoreSection:AddDropdown("MasteryWeaponDrop", {
-    Title = "Vũ Khí Farm Mastery",
-    Values = {"Melee", "Sword", "Gun", "Blox Fruit"},
-    Default = _G.MasteryWeapon,
-    Callback = function(v) _G.MasteryWeapon = v end,
+    Title = "Vũ khí luyện thông thạo",
+    Values = weaponLabels,
+    Default = weaponValueToLabel[_G.MasteryWeapon] or weaponLabels[1],
+    Callback = function(v) _G.MasteryWeapon = weaponLabelToValue[v] or _G.MasteryWeapon end,
 })
 
 FarmCoreSection:AddDropdown("SelectWeaponDrop", {
-    Title = "Chọn Vũ Khí Farm",
-    Values = {"Melee", "Sword", "Gun", "Blox Fruit"},
-    Default = _G.SelectWeapon,
-    Callback = function(v) _G.SelectWeapon = v end,
+    Title = "Chọn vũ khí để đánh",
+    Values = weaponLabels,
+    Default = weaponValueToLabel[_G.SelectWeapon] or weaponLabels[1],
+    Callback = function(v) _G.SelectWeapon = weaponLabelToValue[v] or _G.SelectWeapon end,
 })
 
 FarmCoreSection:AddDropdown("FarmMethodDrop", {
-    Title = "Phương Thức Farm",
-    Values = {"Quest", "Nearest", "Selected Mob"},
-    Default = _G.FarmMethod,
-    Callback = function(v) _G.FarmMethod = v end,
+    Title = "Phương thức luyện cấp",
+    Values = farmMethodLabels,
+    Default = farmMethodValueToLabel[_G.FarmMethod] or farmMethodLabels[1],
+    Callback = function(v) _G.FarmMethod = farmMethodLabelToValue[v] or _G.FarmMethod end,
 })
 
 local currentEnemyNames = getEnemyList()
@@ -3329,7 +3478,7 @@ if _G.SelectedMob == "" and currentEnemyNames[1] ~= "(Không có quái)" then
     _G.SelectedMob = currentEnemyNames[1]
 end
 FarmCoreSection:AddDropdown("SelectedMobDrop", {
-    Title = "Chọn Quái (nếu dùng Selected Mob)",
+    Title = "Chọn quái (khi dùng Quái đã chọn)",
     Values = currentEnemyNames,
     Default = (_G.SelectedMob ~= "" and _G.SelectedMob or 1),
     Callback = function(v) _G.SelectedMob = v end,
@@ -3375,8 +3524,8 @@ FarmPositionSection:AddToggle("FreezeTargetToggle", {
 })
 
 FarmPositionSection:AddToggle("SafetyModeToggle", {
-    Title = "Giới hạn an toàn",
-    Description = "Giới hạn tốc độ, hitbox và gom quái để giảm spam; không thể bảo đảm chống ban.",
+    Title = "Giới hạn hoạt động",
+    Description = "Giới hạn tốc độ, vùng đánh và phạm vi gom quái để giảm thao tác quá nhanh.",
     Default = _G.SafetyMode,
     Callback = function(v)
         _G.SafetyMode = v
@@ -3390,15 +3539,15 @@ FarmPositionSection:AddToggle("SafetyModeToggle", {
 })
 
 FarmPositionSection:AddToggle("BackgroundAttackToggle", {
-    Title = "Đánh nền (không chiếm chuột)",
-    Description = "Ưu tiên CombatController thật, không chiếm chuột; tự dự phòng bằng Tool:Activate nếu executor không hỗ trợ.",
+    Title = "Đánh nền, không chiếm chuột",
+    Description = "Ưu tiên bộ điều khiển chiến đấu của game và tự dùng phương án dự phòng khi cần.",
     Default = _G.BackgroundAttack,
     Callback = function(v) _G.BackgroundAttack = v end,
 })
 
 FarmPositionSection:AddToggle("NoAttackAnimationToggle", {
-    Title = "Ẩn animation đánh thường",
-    Description = "Ẩn chuyển động đấm/chém nhưng không dừng track damage; tự tạm nhường khi Auto Skill chạy.",
+    Title = "Ẩn hoạt ảnh đánh thường",
+    Description = "Ẩn chuyển động đấm/chém nhưng không dừng mốc sát thương; tạm nhường khi dùng kỹ năng.",
     Default = _G.NoAttackAnimation,
     Callback = function(v)
         _G.NoAttackAnimation = v
@@ -3417,7 +3566,7 @@ FarmPositionSection:AddSlider("AttackDelaySlider", {
 })
 
 FarmPositionSection:AddSlider("HitboxSizeSlider", {
-    Title = "Kích thước vùng đánh",
+    Title = "Kích thước vùng tiếp xúc",
     Min = 2,
     Max = 30,
     Default = _G.HitboxSize,
@@ -3460,16 +3609,21 @@ FarmPositionSection:AddSlider("SkillCDSlider", {
     Callback = function(v) _G.SkillCooldown = v end,
 })
 
-local FarmBossSection = FarmTab:AddSection("Boss & tài nguyên")
+local FarmBossSection = FarmTab:AddSection("Trùm và tài nguyên")
 
-currentBossNames = getBossList()
+refreshBossCache()
 if #currentBossNames > 0 and (_G.SelectedBoss == "" or not table.find(currentBossNames, _G.SelectedBoss)) then
     _G.SelectedBoss = currentBossNames[1]
 end
 
+bossStatusParagraph = FarmBossSection:AddParagraph({
+    Title = "Trạng thái Trùm trong máy chủ",
+    Content = bossStatusSummary,
+})
+
 FarmBossSection:AddToggle("AutoFarmBoss", {
-    Title = "Auto Farm Boss",
-    Description = "Tự động farm boss được chọn",
+    Title = "Tự động đánh Trùm",
+    Description = "Tự động tìm và đánh Trùm được chọn",
     Default = _G.AutoFarmBoss,
     Callback = function(v)
         _G.AutoFarmBoss = v
@@ -3481,34 +3635,56 @@ FarmBossSection:AddToggle("AutoFarmBoss", {
 })
 
 FarmBossSection:AddDropdown("SelectedBossDrop", {
-    Title = "Chọn Boss",
-    Values = currentBossNames,
-    Default = (_G.SelectedBoss ~= "" and _G.SelectedBoss or 1),
-    Callback = function(v) _G.SelectedBoss = v end,
+    Title = "Chọn Trùm",
+    Values = bossStatusLabels,
+    Default = bossNameToStatusLabel[_G.SelectedBoss] or bossStatusLabels[1],
+    Callback = function(v)
+        _G.SelectedBoss = bossStatusLabelToName[v] or _G.SelectedBoss
+    end,
 })
 
-FarmBossSection:AddButton({
-    Title = "Làm mới danh sách Boss",
-    Description = "Thêm các boss/raid boss vừa xuất hiện trong server.",
-    Callback = function()
-        currentBossNames = getBossList()
-        if #currentBossNames > 0 and not table.find(currentBossNames, _G.SelectedBoss) then
-            _G.SelectedBoss = currentBossNames[1]
-        end
-        for _, optionId in ipairs({"SelectedBossDrop", "BossTPDrop"}) do
-            local option = Fluent.Options and Fluent.Options[optionId]
-            if option then
-                option:SetValues(currentBossNames)
-                if option.SetValue and _G.SelectedBoss ~= "" then
-                    option:SetValue(_G.SelectedBoss)
-                end
+refreshBossInterface = function(showNotice)
+    local previousSignature = bossStatusSignature
+    refreshBossCache()
+    if not showNotice and previousSignature == bossStatusSignature then return end
+
+    if #currentBossNames > 0 and not table.find(currentBossNames, _G.SelectedBoss) then
+        _G.SelectedBoss = currentBossNames[1]
+    end
+    if #currentBossNames > 0 and not table.find(currentBossNames, _G.SelectedBossTP) then
+        _G.SelectedBossTP = currentBossNames[1]
+    end
+
+    local selectedByOption = {
+        SelectedBossDrop = _G.SelectedBoss,
+        BossTPDrop = _G.SelectedBossTP,
+    }
+    for optionId, selectedName in pairs(selectedByOption) do
+        local option = Fluent.Options and Fluent.Options[optionId]
+        if option then
+            pcall(function() option:SetValues(bossStatusLabels) end)
+            local selectedLabel = bossNameToStatusLabel[selectedName] or bossStatusLabels[1]
+            if selectedLabel and option.SetValue then
+                pcall(function() option:SetValue(selectedLabel) end)
             end
         end
-        notify("Boss", "Đã cập nhật " .. #currentBossNames .. " boss.", 3)
     end
+
+    if bossStatusParagraph and bossStatusParagraph.SetDesc then
+        pcall(function() bossStatusParagraph:SetDesc(bossStatusSummary) end)
+    end
+    if showNotice then
+        notify("Danh sách Trùm", "Đã cập nhật trạng thái " .. #currentBossNames .. " Trùm.", 3)
+    end
+end
+
+FarmBossSection:AddButton({
+    Title = "Làm mới danh sách Trùm",
+    Description = "Cập nhật ngay trạng thái đang xuất hiện hoặc chưa xuất hiện.",
+    Callback = function() refreshBossInterface(true) end,
 })
 FarmBossSection:AddToggle("AutoFarmSeaBeast", {
-    Title = "Auto Farm Sea Beast",
+    Title = "Tự động đánh Quái biển",
     Default = _G.AutoFarmSeaBeast,
     Callback = function(v)
         _G.AutoFarmSeaBeast = v
@@ -3520,27 +3696,27 @@ FarmBossSection:AddToggle("AutoFarmSeaBeast", {
 })
 
 FarmBossSection:AddToggle("AutoFarmObs", {
-    Title = "Auto Farm Observation",
-    Description = "Duy trì Observation; điểm kinh nghiệm chỉ tăng khi né đòn trong game",
+    Title = "Tự động luyện Haki quan sát",
+    Description = "Duy trì Haki quan sát; kinh nghiệm chỉ tăng khi né đòn trong game",
     Default = _G.AutoFarmObs,
     Callback = function(v) _G.AutoFarmObs = v end,
 })
 
 FarmBossSection:AddToggle("AutoFarmBone", {
-    Title = "Auto Farm Bone",
+    Title = "Tự động kiếm Xương",
     Default = _G.AutoFarmBone,
     Callback = function(v) _G.AutoFarmBone = v end,
 })
 
 FarmBossSection:AddToggle("AutoFarmFragment", {
-    Title = "Auto Farm Fragment (Raid)",
-    Description = "Mua chip, bắt đầu raid và đánh quái raid để nhận Fragment.",
+    Title = "Tự động kiếm Mảnh qua đột kích",
+    Description = "Mua chip, bắt đầu đột kích và đánh quái để nhận Mảnh.",
     Default = _G.AutoFarmFragment,
     Callback = function(v) _G.AutoFarmFragment = v end,
 })
 
 FarmBossSection:AddToggle("AutoFarmChest", {
-    Title = "Auto Farm Rương",
+    Title = "Tự động nhặt Rương",
     Description = "Tự động tìm và mở rương",
     Default = _G.AutoFarmChest,
     Callback = function(v) _G.AutoFarmChest = v end,
@@ -3555,15 +3731,15 @@ runFeature("Giao diện Raid", function()
 local RaidMainSection = RaidTab:AddSection("Đột kích & thức tỉnh")
 
 RaidMainSection:AddToggle("AutoRaidToggle", {
-    Title = "Auto Raid",
-    Description = "Tự động bắt đầu raid với chip được chọn",
+    Title = "Tự động bắt đầu đột kích",
+    Description = "Tự động bắt đầu đột kích với chip được chọn",
     Default = _G.AutoRaid,
     Callback = function(v) _G.AutoRaid = v end,
 })
 
 RaidMainSection:AddToggle("AutoRaidFarmToggle", {
-    Title = "Auto Farm trong Raid",
-    Description = "Farm quái bên trong raid",
+    Title = "Tự động đánh trong đột kích",
+    Description = "Tự động đánh quái bên trong khu đột kích",
     Default = _G.AutoRaidFarm,
     Callback = function(v)
         _G.AutoRaidFarm = v
@@ -3575,27 +3751,27 @@ RaidMainSection:AddToggle("AutoRaidFarmToggle", {
 })
 
 RaidMainSection:AddDropdown("RaidChipDrop", {
-    Title = "Chọn Chip Raid",
+    Title = "Chọn chip đột kích",
     Values = RaidChips,
     Default = _G.RaidChip,
     Callback = function(v) _G.RaidChip = v end,
 })
 
 RaidMainSection:AddToggle("AutoAwakeningToggle", {
-    Title = "Auto Awakening",
-    Description = "Tự kiểm tra và thức tỉnh kỹ năng khi đang ở phòng Awakener",
+    Title = "Tự động thức tỉnh",
+    Description = "Tự kiểm tra và thức tỉnh kỹ năng khi đang ở phòng Thức tỉnh",
     Default = _G.AutoAwakening,
     Callback = function(v) _G.AutoAwakening = v end,
 })
 
 RaidMainSection:AddButton({
-    Title = "🔄 Bắt Đầu Raid Ngay",
-    Description = "Bắt đầu raid với chip đã chọn",
+    Title = "🔄 Bắt đầu đột kích ngay",
+    Description = "Bắt đầu đột kích với chip đã chọn",
     Callback = function()
         if WorldSea == 1 then
-            notify("Raid", "Raid chỉ mở tại Sea 2 hoặc Sea 3.", 4)
+            notify("Đột kích", "Đột kích chỉ mở tại Biển 2 hoặc Biển 3.", 4)
         elseif startSelectedRaid() then
-            notify("⚡ Raid", "Đã gửi thao tác bắt đầu raid " .. _G.RaidChip .. ".", 3)
+            notify("⚡ Đột kích", "Đã gửi thao tác bắt đầu đột kích " .. _G.RaidChip .. ".", 3)
         end
     end
 })
@@ -3609,15 +3785,15 @@ runFeature("Giao diện Trái", function()
 local FruitAutoSection = FruitTab:AddSection("Theo dõi & tự động nhặt")
 
 FruitAutoSection:AddToggle("AutoFindFruitToggle", {
-    Title = "Báo Trái Spawn",
-    Description = "Thông báo khi có trái ác quỷ spawn trên map",
+    Title = "Báo khi Trái xuất hiện",
+    Description = "Thông báo khi có Trái ác quỷ xuất hiện trên bản đồ",
     Default = _G.AutoFruitFinder,
     Callback = function(v) _G.AutoFruitFinder = v end,
 })
 
 FruitAutoSection:AddToggle("AutoCollectFruitToggle", {
-    Title = "Auto Nhặt Trái",
-    Description = "Ưu tiên bay tới nhặt trái, sau đó tự quay lại farm",
+    Title = "Tự động nhặt Trái",
+    Description = "Ưu tiên bay tới nhặt Trái, sau đó tự quay lại luyện cấp",
     Default = _G.AutoCollectFruit,
     Callback = function(v)
         local wasFruitMode = getActiveMovementMode() == "fruit"
@@ -3630,14 +3806,14 @@ FruitAutoSection:AddToggle("AutoCollectFruitToggle", {
 })
 
 FruitAutoSection:AddToggle("FruitESPToggle", {
-    Title = "ESP Fruit",
-    Description = "Hiển thị vị trí trái ác quỷ trên map",
+    Title = "Đánh dấu Trái ác quỷ",
+    Description = "Hiển thị vị trí Trái ác quỷ trên bản đồ",
     Default = _G.FruitESP,
     Callback = function(v) _G.FruitESP = v end,
 })
 
 FruitAutoSection:AddToggle("AutoGachaToggle", {
-    Title = "Auto Gacha / Random Fruit",
+    Title = "Tự động mua Trái ngẫu nhiên",
     Description = "Gửi yêu cầu mua trái mỗi 30 giây; game vẫn áp dụng tiền và thời gian chờ",
     Default = _G.AutoGachaFruit,
     Callback = function(v) _G.AutoGachaFruit = v end,
@@ -3647,18 +3823,18 @@ local FruitActionSection = FruitTab:AddSection("Thao tác nhanh")
 
 FruitActionSection:AddButton({
     Title = "Mua trái ngẫu nhiên",
-    Description = "Mua 1 trái random từ Blox Fruit Dealer Cousin",
+    Description = "Mua một Trái ngẫu nhiên từ người bán Trái ác quỷ",
     Callback = function()
         pcall(function()
             local res = ReplicatedStorage.Remotes.CommF_:InvokeServer("Cousin", "Buy")
-            notify("🎰 Gacha Fruit", tostring(res or "Đã gửi yêu cầu Mua trái"), 6)
+            notify("🎰 Mua Trái ngẫu nhiên", tostring(res or "Đã gửi yêu cầu Mua trái"), 6)
         end)
     end
 })
 
 FruitActionSection:AddButton({
     Title = "Quét trái trên toàn bản đồ",
-    Description = "Quét các Tool trái thật đang nằm trong workspace",
+    Description = "Quét các Trái thật đang nằm trên bản đồ",
     Callback = function()
         local fruits = getSpawnedFruits()
         if #fruits == 0 then
@@ -3676,7 +3852,7 @@ FruitActionSection:AddButton({
 
 FruitActionSection:AddButton({
     Title = "Mở cửa hàng trái",
-    Description = "Nạp dữ liệu cửa hàng và mở bảng Fruit Shop nếu game đã tạo giao diện.",
+    Description = "Nạp dữ liệu và mở cửa hàng Trái nếu game đã tạo giao diện.",
     Callback = function()
         local opened = false
         runFeature("Mở cửa hàng trái", function()
@@ -3710,49 +3886,49 @@ runFeature("Giao diện ESP", function()
 local ESPTargetSection = ESPTab:AddSection("Đối tượng hiển thị")
 
 ESPTargetSection:AddToggle("ESPPlayerToggle", {
-    Title = "ESP Player",
-    Description = "Hiển thị người chơi khác (có Team Check)",
+    Title = "Đánh dấu người chơi",
+    Description = "Hiển thị người chơi khác và có thể bỏ qua đồng đội",
     Default = _G.ESPPlayer,
     Callback = function(v) _G.ESPPlayer = v; if not v then clearESPKind("player") end end,
 })
 
 ESPTargetSection:AddToggle("ESPTeamCheckToggle", {
-    Title = "Team Check",
+    Title = "Bỏ qua đồng đội",
     Description = "Bỏ qua đồng đội",
     Default = _G.ESPTeamCheck,
     Callback = function(v) _G.ESPTeamCheck = v end,
 })
 
 ESPTargetSection:AddToggle("ESPMobToggle", {
-    Title = "ESP Mob",
+    Title = "Đánh dấu quái",
     Description = "Hiển thị quái thường",
     Default = _G.ESPMob,
     Callback = function(v) _G.ESPMob = v; if not v then clearESPKind("mob") end end,
 })
 
 ESPTargetSection:AddToggle("ESPBossToggle", {
-    Title = "ESP Boss",
-    Description = "Hiển thị model có nhãn Boss/Raid Boss hoặc nằm trong dữ liệu boss",
+    Title = "Đánh dấu Trùm",
+    Description = "Hiển thị các Trùm thường, Trùm đột kích và Trùm trong dữ liệu",
     Default = _G.ESPBoss,
     Callback = function(v) _G.ESPBoss = v; if not v then clearESPKind("boss") end end,
 })
 
 ESPTargetSection:AddToggle("ESPChestToggle", {
-    Title = "ESP Chest",
+    Title = "Đánh dấu Rương",
     Description = "Hiển thị rương",
     Default = _G.ESPChest,
     Callback = function(v) _G.ESPChest = v; if not v then clearESPKind("chest") end end,
 })
 
 ESPTargetSection:AddToggle("ESPFlowerToggle", {
-    Title = "ESP Flower",
+    Title = "Đánh dấu Hoa",
     Description = "Hiển thị hoa",
     Default = _G.ESPFlower,
     Callback = function(v) _G.ESPFlower = v; if not v then clearESPKind("flower") end end,
 })
 
 ESPTargetSection:AddToggle("ESPIslandToggle", {
-    Title = "ESP Island (Waypoint)",
+    Title = "Đánh dấu Đảo",
     Description = "Hiển thị tên đảo",
     Default = _G.ESPIsland,
     Callback = function(v)
@@ -3764,7 +3940,7 @@ ESPTargetSection:AddToggle("ESPIslandToggle", {
 local ESPStyleSection = ESPTab:AddSection("Khoảng cách & màu sắc")
 
 ESPStyleSection:AddSlider("ESPDistSlider", {
-    Title = "Khoảng Cách ESP (studs)",
+    Title = "Khoảng cách hiển thị",
     Min = 100,
     Max = 10000,
     Default = _G.ESPDistance,
@@ -3773,31 +3949,31 @@ ESPStyleSection:AddSlider("ESPDistSlider", {
 })
 
 ESPStyleSection:AddColorpicker("ESPPlayerColor", {
-    Title = "Màu Player",
+    Title = "Màu người chơi",
     Default = _G.ESPPlayerColor,
     Callback = function(v) _G.ESPPlayerColor = v end,
 })
 
 ESPStyleSection:AddColorpicker("ESPMobColorPick", {
-    Title = "Màu Mob",
+    Title = "Màu quái",
     Default = _G.ESPMobColor,
     Callback = function(v) _G.ESPMobColor = v end,
 })
 
 ESPStyleSection:AddColorpicker("ESPBossColorPick", {
-    Title = "Màu Boss",
+    Title = "Màu Trùm",
     Default = _G.ESPBossColor,
     Callback = function(v) _G.ESPBossColor = v end,
 })
 
 ESPStyleSection:AddColorpicker("ESPFruitColorPick", {
-    Title = "Màu Fruit",
+    Title = "Màu Trái",
     Default = _G.ESPFruitColor,
     Callback = function(v) _G.ESPFruitColor = v end,
 })
 
 ESPStyleSection:AddButton({
-    Title = "Tắt và xóa toàn bộ ESP",
+    Title = "Tắt và xóa toàn bộ đánh dấu",
     Callback = function()
         _G.ESPPlayer = false
         _G.ESPMob = false
@@ -3824,7 +4000,7 @@ end)
 local TeleportTab = UITabs.Teleport
 runFeature("Giao diện Di chuyển", function()
 
-local IslandSection = TeleportTab:AddSection("Đảo tại Sea " .. WorldSea)
+local IslandSection = TeleportTab:AddSection("Đảo tại Biển " .. WorldSea)
 
 -- Lấy danh sách đảo theo Sea hiện tại
 local currentIslands = getSeaIslands()
@@ -3838,7 +4014,7 @@ if #islandNames > 0 and (_G.SelectedIsland == "" or not currentIslands[_G.Select
 end
 
 IslandSection:AddDropdown("IslandDrop", {
-    Title = "Chọn Đảo (Sea " .. WorldSea .. ")",
+    Title = "Chọn Đảo (Biển " .. WorldSea .. ")",
     Values = islandNames,
     Default = (_G.SelectedIsland ~= "" and _G.SelectedIsland or 1),
     Callback = function(v) _G.SelectedIsland = v end,
@@ -3894,27 +4070,29 @@ if #ImportantNPCs > 0 then
 end
 
 -- Teleport Boss
-local BossTeleportSection = TeleportTab:AddSection("Boss")
+local BossTeleportSection = TeleportTab:AddSection("Trùm")
 
 if _G.SelectedBossTP == "" or not table.find(currentBossNames, _G.SelectedBossTP) then
     _G.SelectedBossTP = currentBossNames[1] or ""
 end
 
 BossTeleportSection:AddDropdown("BossTPDrop", {
-    Title = "Chọn Boss",
-    Values = currentBossNames,
-    Default = (_G.SelectedBossTP ~= "" and _G.SelectedBossTP or 1),
-    Callback = function(v) _G.SelectedBossTP = v end,
+    Title = "Chọn Trùm",
+    Values = bossStatusLabels,
+    Default = bossNameToStatusLabel[_G.SelectedBossTP] or bossStatusLabels[1],
+    Callback = function(v)
+        _G.SelectedBossTP = bossStatusLabelToName[v] or _G.SelectedBossTP
+    end,
 })
 
 BossTeleportSection:AddButton({
-    Title = "💀 Bay Tới Boss",
+    Title = "💀 Bay tới Trùm",
     Callback = function()
         local bossData = getBossData(_G.SelectedBossTP)
         if bossData then
             notify("✈️ Teleport", "Đang bay tới " .. bossData.Name, 3)
             local arrived = manualTeleportTo(CFrame.new(bossData.Position))
-            notify(arrived and "✅ Đã đến Boss" or "⚠️ Di chuyển bị gián đoạn", bossData.Name, 2)
+            notify(arrived and "✅ Đã đến Trùm" or "⚠️ Di chuyển bị gián đoạn", bossData.Name, 2)
         end
     end
 })
@@ -3929,7 +4107,7 @@ FruitTeleportSection:AddButton({
         local closestFruit = findNearestFruit()
         local handle = getFruitHandle(closestFruit)
         if closestFruit and handle then
-            notify("🍎 Fruit TP", "Bay tới " .. closestFruit.Name, 3)
+            notify("Dịch chuyển Trái", "Đang bay tới " .. closestFruit.Name, 3)
             local arrived = manualTeleportTo(handle.CFrame * CFrame.new(0, 2, 0))
             notify(arrived and "✅ Đã đến trái" or "⚠️ Di chuyển bị gián đoạn", closestFruit.Name, 2)
         else
@@ -3943,7 +4121,7 @@ FruitTeleportSection:AddButton({
 local SeaSection = TeleportTab:AddSection("Chuyển vùng biển")
 
 SeaSection:AddButton({
-    Title = "🌊 Đi Sea 1",
+    Title = "🌊 Đi Biển 1",
     Callback = function()
         pcall(function()
             game:GetService("TeleportService"):Teleport(2753915549, Player)
@@ -3952,7 +4130,7 @@ SeaSection:AddButton({
 })
 
 SeaSection:AddButton({
-    Title = "🌊 Đi Sea 2",
+    Title = "🌊 Đi Biển 2",
     Callback = function()
         pcall(function()
             game:GetService("TeleportService"):Teleport(4442272183, Player)
@@ -3961,7 +4139,7 @@ SeaSection:AddButton({
 })
 
 SeaSection:AddButton({
-    Title = "🌊 Đi Sea 3",
+    Title = "🌊 Đi Biển 3",
     Callback = function()
         pcall(function()
             game:GetService("TeleportService"):Teleport(7449423635, Player)
@@ -3978,28 +4156,28 @@ runFeature("Giao diện Chiến đấu", function()
 local CombatAutoSection = CombatTab:AddSection("Haki & phòng thủ tự động")
 
 CombatAutoSection:AddToggle("AutoBusoToggle", {
-    Title = "Auto Buso Haki",
+    Title = "Tự động bật Haki vũ trang",
     Description = "Tự động bật Buso Haki (Haki Vũ Trang)",
     Default = _G.AutoHaki,
     Callback = function(v) _G.AutoHaki = v end,
 })
 
 CombatAutoSection:AddToggle("AutoKenToggle", {
-    Title = "Auto Ken Haki",
+    Title = "Tự động bật Haki quan sát",
     Description = "Tự động bật Ken Haki (Haki Quan Sát)",
     Default = _G.AutoKen,
     Callback = function(v) _G.AutoKen = v; if v then activateObservation(true) end end,
 })
 
 CombatAutoSection:AddToggle("AutoObsV2Toggle", {
-    Title = "Duy trì Observation",
+    Title = "Duy trì Haki quan sát",
     Description = "Duy trì Observation sau khi hồi sinh; không tự mở khóa V2",
     Default = _G.AutoObsV2,
     Callback = function(v) _G.AutoObsV2 = v; if v then activateObservation(true) end end,
 })
 
 CombatAutoSection:AddToggle("AutoDodgeToggle", {
-    Title = "Auto Dodge",
+    Title = "Tự động né đòn",
     Description = "Tự động né tránh đạn/đòn đánh",
     Default = _G.AutoDodge,
     Callback = function(v) _G.AutoDodge = v end,
@@ -4027,7 +4205,7 @@ CombatActionSection:AddButton({
 })
 
 CombatActionSection:AddButton({
-    Title = "Duy trì Observation",
+    Title = "Duy trì Haki quan sát",
     Description = "Chỉ bật/duy trì Observation hiện có; không tự mở khóa V2.",
     Callback = function()
         if activateObservation(true) then
@@ -4046,7 +4224,7 @@ local MovementSection = MiscTab:AddSection("Di chuyển nhân vật")
 
 -- Speed & Jump
 MovementSection:AddToggle("WalkSpeedToggle", {
-    Title = "WalkSpeed Hack",
+    Title = "Điều chỉnh tốc độ chạy",
     Default = _G.WalkSpeedHack,
     Callback = function(v) _G.WalkSpeedHack = v; if not v then restoreMovementStats("WalkSpeed") end end,
 })
@@ -4061,7 +4239,7 @@ MovementSection:AddSlider("WalkSpeedSlider", {
 })
 
 MovementSection:AddToggle("JumpPowerToggle", {
-    Title = "JumpPower Hack",
+    Title = "Điều chỉnh sức nhảy",
     Default = _G.JumpPowerHack,
     Callback = function(v) _G.JumpPowerHack = v; if not v then restoreMovementStats("JumpPower") end end,
 })
@@ -4076,14 +4254,14 @@ MovementSection:AddSlider("JumpPowerSlider", {
 })
 
 MovementSection:AddToggle("InfiniteJumpToggle", {
-    Title = "Infinite Jump",
+    Title = "Nhảy vô hạn",
     Description = "Nhảy không giới hạn trên không",
     Default = _G.InfiniteJump,
     Callback = function(v) _G.InfiniteJump = v end,
 })
 
 MovementSection:AddToggle("InfiniteEnergyToggle", {
-    Title = "Infinite Energy",
+    Title = "Năng lượng vô hạn",
     Description = "Năng lượng không giới hạn",
     Default = _G.InfiniteEnergy,
     Callback = function(v) _G.InfiniteEnergy = v end,
@@ -4093,24 +4271,24 @@ MovementSection:AddToggle("InfiniteEnergyToggle", {
 local StatsSection = MiscTab:AddSection("Chỉ số tự động")
 
 StatsSection:AddToggle("AutoStatsToggle", {
-    Title = "Auto Cộng Điểm Stats",
+    Title = "Tự động cộng điểm chỉ số",
     Default = _G.AutoStats,
     Callback = function(v) _G.AutoStats = v end,
 })
 
 StatsSection:AddDropdown("StatDropdown", {
-    Title = "Chọn Chỉ Số",
-    Values = {"Melee", "Defense", "Sword", "Gun", "Blox Fruit"},
-    Default = _G.StatToUpgrade,
-    Callback = function(v) _G.StatToUpgrade = v end,
+    Title = "Chọn chỉ số",
+    Values = statLabels,
+    Default = statValueToLabel[_G.StatToUpgrade] or statLabels[1],
+    Callback = function(v) _G.StatToUpgrade = statLabelToValue[v] or _G.StatToUpgrade end,
 })
 
 -- Anti-AFK
 local ProtectionSection = MiscTab:AddSection("Bảo vệ phiên chơi")
 
 ProtectionSection:AddToggle("AntiAFKToggle", {
-    Title = "Anti AFK",
-    Description = "Chống bị kick do AFK",
+    Title = "Chống mất kết nối khi đứng yên",
+    Description = "Ngăn game ngắt kết nối do đứng yên quá lâu",
     Default = _G.AntiAFK,
     Callback = function(v) _G.AntiAFK = v end,
 })
@@ -4120,7 +4298,7 @@ local PerformanceSection = MiscTab:AddSection("Hiệu năng & hiển thị")
 
 PerformanceSection:AddButton({
     Title = "Tối ưu FPS",
-    Description = "Tắt texture/particle để giảm lag; muốn hoàn tác hãy vào lại server.",
+    Description = "Tắt họa tiết và hiệu ứng hạt để giảm giật; vào lại máy chủ để hoàn tác.",
     Callback = function()
         pcall(function()
             local removed = 0
@@ -4151,7 +4329,7 @@ PerformanceSection:AddButton({
 
 PerformanceSection:AddButton({
     Title = "Chế độ nền trắng",
-    Description = "Xóa Skybox, đổi nền trắng",
+    Description = "Xóa bầu trời và đổi nền thành màu trắng",
     Callback = function()
         pcall(function()
             Lighting.Ambient = Color3.new(1, 1, 1)
@@ -4172,7 +4350,7 @@ PerformanceSection:AddButton({
 
 PerformanceSection:AddButton({
     Title = "Chế độ nền đen",
-    Description = "Xóa Skybox, đổi nền đen",
+    Description = "Xóa bầu trời và đổi nền thành màu đen",
     Callback = function()
         pcall(function()
             Lighting.Ambient = Color3.new(0, 0, 0)
@@ -4197,16 +4375,16 @@ local MiscServerSection = MiscTab:AddSection("Tự động đổi máy chủ")
 
 MiscServerSection:AddButton({
     Title = "Đổi máy chủ ngay",
-    Description = "Nhảy sang server khác",
+    Description = "Chuyển sang máy chủ công khai khác",
     Callback = function()
-        notify("🌐", "Đang tìm server...", 2)
+        notify("Đổi máy chủ", "Đang tìm máy chủ...", 2)
         serverHop()
     end
 })
 
 MiscServerSection:AddToggle("ServerHopNoFruitToggle", {
-    Title = "Auto Server Hop (Không có Fruit)",
-    Description = "Tự động nhảy server nếu không có trái",
+    Title = "Tự đổi máy chủ khi không có Trái",
+    Description = "Tự động chuyển sang máy chủ ít người nếu không tìm thấy Trái",
     Default = _G.ServerHopNoFruit,
     Callback = function(v) _G.ServerHopNoFruit = v end,
 })
@@ -4235,7 +4413,7 @@ UtilitySection:AddButton({
             pcall(function() frag = Player.Data.Fragments.Value end)
 
             notify("📋 Thông Tin", string.format(
-                "Level: %s\nBeli: %s\nFragment: %s\nSea: %d\nServer: %s",
+                "Cấp: %s\nTiền: %s\nMảnh: %s\nBiển: %d\nMáy chủ: %s",
                 tostring(lvl), tostring(beli), tostring(frag), WorldSea, game.JobId:sub(1,12)
             ), 6)
         end)
@@ -4309,6 +4487,14 @@ pcall(function()
     end
 end)
 
+-- Tự cập nhật trạng thái Trùm khi Trùm xuất hiện hoặc bị hạ.
+task.spawn(function()
+    while RuntimeEnv.HAOTOOL_RUN_TOKEN == CurrentRunToken do
+        task.wait(2)
+        if refreshBossInterface then pcall(refreshBossInterface, false) end
+    end
+end)
+
 -- Đồng bộ lại giao diện theo đúng trạng thái trước khi chuyển server.
 if type(teleportState) == "table" and Fluent and Fluent.Options then
     local teleportOptionMap = {
@@ -4371,6 +4557,7 @@ if type(teleportState) == "table" and Fluent and Fluent.Options then
         StatDropdown = "StatToUpgrade",
         AntiAFKToggle = "AntiAFK",
         ServerHopNoFruitToggle = "ServerHopNoFruit",
+        LowServerMaxPlayersSlider = "LowServerMaxPlayers",
         ESPPlayerColor = "ESPPlayerColor",
         ESPMobColorPick = "ESPMobColor",
         ESPBossColorPick = "ESPBossColor",
@@ -4381,7 +4568,17 @@ if type(teleportState) == "table" and Fluent and Fluent.Options then
         local option = Fluent.Options[optionId]
         local value = teleportState[stateKey]
         if option and value ~= nil and option.SetValue then
-            pcall(function() option:SetValue(value) end)
+            local displayValue = value
+            if optionId == "MasteryWeaponDrop" or optionId == "SelectWeaponDrop" then
+                displayValue = weaponValueToLabel[value] or value
+            elseif optionId == "FarmMethodDrop" then
+                displayValue = farmMethodValueToLabel[value] or value
+            elseif optionId == "StatDropdown" then
+                displayValue = statValueToLabel[value] or value
+            elseif optionId == "SelectedBossDrop" or optionId == "BossTPDrop" then
+                displayValue = bossNameToStatusLabel[value] or value
+            end
+            pcall(function() option:SetValue(displayValue) end)
         end
     end
 end
@@ -4397,19 +4594,19 @@ RuntimeEnv.HAOTOOL_LAST_FATAL_ERROR = nil
 -- Thông báo load thành công
 notify(
     "HAOTOOL • Sẵn sàng",
-    "Sea " .. WorldSea
-        .. "  •  " .. #(WorldSea == 1 and QuestsSea1 or WorldSea == 2 and QuestsSea2 or QuestsSea3) .. " quest"
+    "Biển " .. WorldSea
+        .. "  •  " .. #(WorldSea == 1 and QuestsSea1 or WorldSea == 2 and QuestsSea2 or QuestsSea3) .. " nhiệm vụ"
         .. "  •  " .. #islandNames .. " đảo"
         .. "\nGiao diện: " .. createdTabCount .. "/9 tab"
         .. "\nRightControl hoặc nút H để ẩn / hiện giao diện"
-        .. (teleportReloadReady and "  •  Tự nạp server: ON" or "  •  Executor không hỗ trợ tự nạp"),
+        .. (teleportReloadReady and "  •  Tự nạp khi đổi máy chủ: BẬT" or "  •  Trình thực thi không hỗ trợ tự nạp"),
     6
 )
 
 print("=====================================")
-print("⚡ HAOTOOL v2.2.6 — LOADED SUCCESSFULLY")
-print("🌊 Sea: " .. WorldSea)
-print("📌 RightControl to toggle GUI")
+print("⚡ HAOTOOL v2.3.0 — ĐÃ KHỞI ĐỘNG THÀNH CÔNG")
+print("🌊 Biển: " .. WorldSea)
+print("📌 RightControl để ẩn hoặc hiện giao diện")
 print("=====================================")
 
 end
