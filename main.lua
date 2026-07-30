@@ -671,12 +671,15 @@ local function attack()
     local char = Player.Character
     if char then
         local tool = char:FindFirstChildOfClass("Tool")
-        if tool then tool:Activate() end
+        if tool then
+            tool:Activate()
+        end
     end
-    VirtualInputManager:SendMouseButtonEvent(0, 0, 0, true, game, 0)
-    VirtualInputManager:SendMouseButtonEvent(0, 0, 0, false, game, 0)
-    VirtualUser:CaptureController()
-    VirtualUser:Button1Down(Vector2.new(0, 0))
+    pcall(function()
+        VirtualUser:Button1Down(Vector2.new(500, 500))
+        task.wait(0.01)
+        VirtualUser:Button1Up(Vector2.new(500, 500))
+    end)
 end
 
 local function equipWeapon(weaponType)
