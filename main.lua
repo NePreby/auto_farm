@@ -1,19 +1,36 @@
 local HAOTOOL_SOURCE = [========[
 local RuntimeEnv = getgenv and getgenv() or _G
+local RequestedScriptVersion = "2.1.2"
 if RuntimeEnv.HAOTOOL_RUNNING then
-    if type(RuntimeEnv.HAOTOOL_TOGGLE_MENU) == "function" then
+    if RuntimeEnv.HAOTOOL_SCRIPT_VERSION == RequestedScriptVersion then
+        if type(RuntimeEnv.HAOTOOL_TOGGLE_MENU) == "function" then
+            pcall(RuntimeEnv.HAOTOOL_TOGGLE_MENU)
+        end
+        return
+    end
+
+    -- Tự thay phiên bản cũ thay vì chỉ bật lại cửa sổ cũ bị dựng thiếu tab.
+    if type(RuntimeEnv.HAOTOOL_DESTROY_UI) == "function" then
+        pcall(RuntimeEnv.HAOTOOL_DESTROY_UI)
+    elseif type(RuntimeEnv.HAOTOOL_TOGGLE_MENU) == "function" then
         pcall(RuntimeEnv.HAOTOOL_TOGGLE_MENU)
     end
-    return
+    RuntimeEnv.HAOTOOL_RUN_TOKEN = {}
+    RuntimeEnv.HAOTOOL_RUNNING = nil
+    RuntimeEnv.HAOTOOL_TOGGLE_MENU = nil
+    RuntimeEnv.HAOTOOL_DESTROY_UI = nil
+    RuntimeEnv.HAOTOOL_TELEPORT_QUEUED = nil
+    task.wait(0.1)
 end
 RuntimeEnv.HAOTOOL_RUNNING = true
 local CurrentRunToken = {}
 RuntimeEnv.HAOTOOL_RUN_TOKEN = CurrentRunToken
-RuntimeEnv.HAOTOOL_SCRIPT_VERSION = "2.1.0"
+RuntimeEnv.HAOTOOL_SCRIPT_VERSION = RequestedScriptVersion
+RuntimeEnv.HAOTOOL_UI_READY = false
 
 --[[
     ================================================================================
-    ⚡ HAOTOOL | BLOX FRUITS V2.1 — STABLE EDITION
+    ⚡ HAOTOOL | BLOX FRUITS V2.1.2 — STABLE EDITION
     --------------------------------------------------------------------------------
     Developer   : HAOTOOL Team
     UI Library  : Fluent (Dark Theme)
@@ -138,6 +155,7 @@ setDefault("FarmDistance", 0)
 setDefault("HoldFarmPosition", true)
 setDefault("FreezeTarget", true)
 setDefault("AttackDelay", 0.05)
+setDefault("BackgroundAttack", true)
 setDefault("HitboxSize", 12)
 setDefault("SafetyMode", true)
 setDefault("AutoSkill", false)
@@ -209,7 +227,7 @@ local TELEPORT_STATE_KEYS = {
     "AutoFarmObs", "AutoFarmBone", "AutoFarmFragment", "AutoFarmChest",
     "SelectWeapon", "FarmMethod", "SelectedMob",
     "BringMob", "BringRadius", "FarmHeight", "FarmDistance",
-    "HoldFarmPosition", "FreezeTarget", "AttackDelay", "HitboxSize",
+    "HoldFarmPosition", "FreezeTarget", "AttackDelay", "BackgroundAttack", "HitboxSize",
     "SafetyMode", "AutoSkill", "SkillCooldown",
     "AutoRaid", "AutoRaidFarm", "AutoAwakening", "RaidChip",
     "AutoHaki", "AutoKen", "AutoObsV2", "AutoDodge",
@@ -835,8 +853,9 @@ end
 -- Kích hoạt Tool trực tiếp để không chiếm chuột và vẫn bấm được giao diện.
 local function attack()
     local now = os.clock()
-    if userPointerActive or now < manualPointerPauseUntil
-        or UserInputService:GetFocusedTextBox() then
+    local backgroundMode = _G.BackgroundAttack ~= false
+    if not backgroundMode and (userPointerActive or now < manualPointerPauseUntil
+        or UserInputService:GetFocusedTextBox()) then
         return
     end
 
@@ -853,12 +872,14 @@ local function attack()
     local tool = char and char:FindFirstChildOfClass("Tool")
     if not tool then return end
 
+    -- Chế độ nền chỉ kích hoạt Tool: không gửi click, không chiếm con trỏ/menu.
     pcall(function() tool:Activate() end)
+    if backgroundMode then return end
 
+    -- Chế độ tương thích cho vũ khí không phản hồi Tool:Activate().
     pcall(function()
         sendingVirtualAttack = true
-        local input = game:GetService("VirtualInputManager")
-        input:SendMouseButtonEvent(0, 0, 0, true, game, 0)
+        VirtualInputManager:SendMouseButtonEvent(0, 0, 0, true, game, 0)
         task.wait(0.015)
         VirtualInputManager:SendMouseButtonEvent(0, 0, 0, false, game, 0)
     end)
@@ -2289,7 +2310,7 @@ end
 
 local Window = Fluent:CreateWindow({
     Title    = "HAOTOOL  •  BLOX FRUITS",
-    SubTitle = "Sea " .. WorldSea .. "  |  Control Center",
+    SubTitle = "V" .. RequestedScriptVersion .. "  •  Sea " .. WorldSea .. "  |  Control Center",
     TabWidth = 170,
     Size     = UDim2.fromOffset(720, 540),
     Acrylic  = true,
@@ -2422,6 +2443,25 @@ end
 
 local LauncherGui = createLauncherButton()
 
+pcall(function()
+    if Window and Window.Root then
+        Window.Root.Name = "HAOTOOL_MainWindow"
+    end
+end)
+
+RuntimeEnv.HAOTOOL_DESTROY_UI = function()
+    pcall(function()
+        if LauncherGui and LauncherGui.Parent then LauncherGui:Destroy() end
+    end)
+    pcall(function()
+        if Fluent and Fluent.GUI and typeof(Fluent.GUI) == "Instance" then
+            Fluent.GUI:Destroy()
+        elseif Window and Window.Root and Window.Root.Parent then
+            Window.Root:Destroy()
+        end
+    end)
+end
+
 -- Nút X an toàn phủ lên nút hủy mặc định của Fluent.
 pcall(function()
     local originalClose = Window.TitleBar and Window.TitleBar.CloseButton
@@ -2465,7 +2505,37 @@ end)
 
 -- ==================== TAB 1: MAIN ====================
 -- Tên tab ngắn, đồng nhất và ưu tiên tiếng Việt để dễ quét nhanh.
-local MainTab = Window:AddTab({Title = "Tổng quan", Icon = "layout-dashboard"})
+local function addTabSafe(name, title, icon)
+    local ok, tabOrError = pcall(function()
+        return Window:AddTab({Title = title, Icon = icon})
+    end)
+    if ok and tabOrError then return tabOrError end
+
+    featureErrors["Tab " .. name] = tostring(tabOrError)
+    local fallbackOk, fallbackTab = pcall(function()
+        return Window:AddTab({Title = title})
+    end)
+    if fallbackOk then return fallbackTab end
+    featureErrors["Tab " .. name] = tostring(fallbackTab)
+    return nil
+end
+
+-- Tạo toàn bộ tab trước; một nhóm điều khiển lỗi sẽ không làm biến mất các tab còn lại.
+local UITabs = {
+    Main = addTabSafe("Tổng quan", "Tổng quan", "layout-dashboard"),
+    Farm = addTabSafe("Farm", "Tự động farm", "swords"),
+    Raid = addTabSafe("Raid", "Đột kích", "shield"),
+    Fruit = addTabSafe("Fruit", "Trái ác quỷ", "cherry"),
+    ESP = addTabSafe("ESP", "Hiển thị ESP", "eye"),
+    Teleport = addTabSafe("Di chuyển", "Di chuyển", "map-pin"),
+    Combat = addTabSafe("Chiến đấu", "Chiến đấu", "crosshair"),
+    Misc = addTabSafe("Tiện ích", "Tiện ích", "wrench"),
+    Settings = addTabSafe("Cài đặt", "Cài đặt", "settings"),
+}
+local currentBossNames
+
+local MainTab = UITabs.Main
+runFeature("Giao diện Tổng quan", function()
 
 MainTab:AddParagraph({
     Title = "⚡  Xin chào, " .. Player.DisplayName,
@@ -2497,8 +2567,11 @@ ServerSection:AddButton({
     end
 })
 
+end)
+
 -- ==================== TAB 2: FARM ====================
-local FarmTab = Window:AddTab({Title = "Tự động farm", Icon = "swords"})
+local FarmTab = UITabs.Farm
+runFeature("Giao diện Farm", function()
 
 local FarmCoreSection = FarmTab:AddSection("Nâng cấp & Mastery")
 
@@ -2618,6 +2691,13 @@ FarmPositionSection:AddToggle("SafetyModeToggle", {
     end,
 })
 
+FarmPositionSection:AddToggle("BackgroundAttackToggle", {
+    Title = "Đánh nền (không chiếm chuột)",
+    Description = "Chỉ dùng Tool:Activate nên vẫn bấm menu bình thường. Nếu vũ khí không gây sát thương, hãy tắt để dùng chế độ tương thích.",
+    Default = _G.BackgroundAttack,
+    Callback = function(v) _G.BackgroundAttack = v end,
+})
+
 FarmPositionSection:AddSlider("AttackDelaySlider", {
     Title = "Độ trễ đánh thường",
     Description = "Thấp hơn sẽ nhanh hơn; khi giới hạn an toàn bật, mức thực tế không thấp hơn 0.05.",
@@ -2674,7 +2754,7 @@ FarmPositionSection:AddSlider("SkillCDSlider", {
 
 local FarmBossSection = FarmTab:AddSection("Boss & tài nguyên")
 
-local currentBossNames = getBossList()
+currentBossNames = getBossList()
 if #currentBossNames > 0 and (_G.SelectedBoss == "" or not table.find(currentBossNames, _G.SelectedBoss)) then
     _G.SelectedBoss = currentBossNames[1]
 end
@@ -2758,8 +2838,11 @@ FarmBossSection:AddToggle("AutoFarmChest", {
     Callback = function(v) _G.AutoFarmChest = v end,
 })
 
+end)
+
 -- ==================== TAB 3: RAID ====================
-local RaidTab = Window:AddTab({Title = "Đột kích", Icon = "shield"})
+local RaidTab = UITabs.Raid
+runFeature("Giao diện Raid", function()
 
 local RaidMainSection = RaidTab:AddSection("Đột kích & thức tỉnh")
 
@@ -2809,8 +2892,11 @@ RaidMainSection:AddButton({
     end
 })
 
+end)
+
 -- ==================== TAB 4: FRUIT ====================
-local FruitTab = Window:AddTab({Title = "Trái ác quỷ", Icon = "cherry"})
+local FruitTab = UITabs.Fruit
+runFeature("Giao diện Trái", function()
 
 local FruitAutoSection = FruitTab:AddSection("Theo dõi & tự động nhặt")
 
@@ -2896,8 +2982,11 @@ FruitActionSection:AddButton({
     end
 })
 
+end)
+
 -- ==================== TAB 5: ESP ====================
-local ESPTab = Window:AddTab({Title = "Hiển thị ESP", Icon = "eye"})
+local ESPTab = UITabs.ESP
+runFeature("Giao diện ESP", function()
 
 local ESPTargetSection = ESPTab:AddSection("Đối tượng hiển thị")
 
@@ -3010,8 +3099,11 @@ ESPStyleSection:AddButton({
     end
 })
 
+end)
+
 -- ==================== TAB 6: TELEPORT ====================
-local TeleportTab = Window:AddTab({Title = "Di chuyển", Icon = "map-pin"})
+local TeleportTab = UITabs.Teleport
+runFeature("Giao diện Di chuyển", function()
 
 local IslandSection = TeleportTab:AddSection("Đảo tại Sea " .. WorldSea)
 
@@ -3154,8 +3246,11 @@ SeaSection:AddButton({
     end
 })
 
+end)
+
 -- ==================== TAB 7: COMBAT ====================
-local CombatTab = Window:AddTab({Title = "Chiến đấu", Icon = "crosshair"})
+local CombatTab = UITabs.Combat
+runFeature("Giao diện Chiến đấu", function()
 
 local CombatAutoSection = CombatTab:AddSection("Haki & phòng thủ tự động")
 
@@ -3218,8 +3313,11 @@ CombatActionSection:AddButton({
     end
 })
 
+end)
+
 -- ==================== TAB 8: MISC ====================
-local MiscTab = Window:AddTab({Title = "Tiện ích", Icon = "wrench"})
+local MiscTab = UITabs.Misc
+runFeature("Giao diện Tiện ích", function()
 
 local MovementSection = MiscTab:AddSection("Di chuyển nhân vật")
 
@@ -3390,8 +3488,11 @@ MiscServerSection:AddToggle("ServerHopNoFruitToggle", {
     Callback = function(v) _G.ServerHopNoFruit = v end,
 })
 
+end)
+
 -- ==================== TAB 9: SETTINGS ====================
-local SettingsTab = Window:AddTab({Title = "Cài đặt", Icon = "settings"})
+local SettingsTab = UITabs.Settings
+runFeature("Giao diện Cài đặt", function()
 
 SettingsTab:AddParagraph({
     Title = "Cá nhân hóa HAOTOOL",
@@ -3469,6 +3570,8 @@ if SaveManager and InterfaceManager then
     end)
 end
 
+end)
+
 ------------------------------------------------------------
 -- PHẦN 8: HOÀN TẤT
 ------------------------------------------------------------
@@ -3497,6 +3600,7 @@ if type(teleportState) == "table" and Fluent and Fluent.Options then
         HoldFarmPositionToggle = "HoldFarmPosition",
         FreezeTargetToggle = "FreezeTarget",
         SafetyModeToggle = "SafetyMode",
+        BackgroundAttackToggle = "BackgroundAttack",
         AttackDelaySlider = "AttackDelay",
         HitboxSizeSlider = "HitboxSize",
         BringMobToggle = "BringMob",
@@ -3555,6 +3659,8 @@ if type(teleportState) == "table" and Fluent and Fluent.Options then
 end
 
 
+RuntimeEnv.HAOTOOL_UI_READY = true
+
 -- Thông báo load thành công
 notify(
     "HAOTOOL • Sẵn sàng",
@@ -3567,7 +3673,7 @@ notify(
 )
 
 print("=====================================")
-print("⚡ HAOTOOL v2.1 — LOADED SUCCESSFULLY")
+print("⚡ HAOTOOL v2.1.2 — LOADED SUCCESSFULLY")
 print("🌊 Sea: " .. WorldSea)
 print("📌 RightControl to toggle GUI")
 print("=====================================")
