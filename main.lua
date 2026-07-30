@@ -1107,48 +1107,57 @@ local function attack()
     checkHaki()
 
     local char = Player.Character
-    local tool = char and char:FindFirstChildOfClass("Tool")
+    if not char then return false end
+
+    -- 1. Đảm bảo nhân vật luôn có vũ khí trên tay (nếu chưa cầm, ép cầm từ Backpack)
+    local tool = char:FindFirstChildOfClass("Tool")
     if not tool then
         equipWeapon(_G.SelectWeapon or "Melee")
-        task.wait(0.05)
-        char = Player.Character
-        tool = char and char:FindFirstChildOfClass("Tool")
+        tool = char:FindFirstChildOfClass("Tool")
     end
+
     if not tool then
-        lastAttackMethod = "Chưa trang bị vũ khí"
+        lastAttackMethod = "Chưa có vũ khí trong Balo"
         return false
     end
 
+    -- 2. Kích hoạt đòn đánh qua Tool:Activate()
+    pcall(function() tool:Activate() end)
+
+    -- 3. Kích hoạt CombatController nếu có
     local controller = resolveCombatController(false)
     if controller then
-        local controllerAttack = controller.attack or controller.Attack
-        local ok = pcall(controllerAttack, controller)
-        if ok then
-            lastAttackMethod = "CombatController"
-            return true
+        pcall(function()
+            if type(controller.attack) == "function" then controller:attack()
+            elseif type(controller.Attack) == "function" then controller:Attack() end
+        end)
+    end
+
+    -- 4. Gửi Remote trực tiếp của Blox Fruits
+    pcall(function()
+        local net = ReplicatedStorage:FindFirstChild("Modules") and ReplicatedStorage.Modules:FindFirstChild("Net")
+        if net then
+            local regAttack = net:FindFirstChild("RegisterAttack") or net:FindFirstChild("RE/RegisterAttack")
+            if regAttack and regAttack:IsA("RemoteEvent") then regAttack:FireServer() end
         end
-        combatControllerCache = nil
-    end
-
-    local activated = pcall(function() tool:Activate() end)
-    if activated then lastAttackMethod = "Tool:Activate" end
-    if _G.BackgroundAttack ~= false then return activated end
-
-    -- Chế độ tương thích chỉ click khi người dùng không thao tác giao diện.
-    if userPointerActive or now < manualPointerPauseUntil
-        or UserInputService:GetFocusedTextBox() then
-        return activated
-    end
-
-    sendingVirtualAttack = true
-    local inputOk = pcall(function()
-        VirtualInputManager:SendMouseButtonEvent(0, 0, 0, true, game, 0)
-        task.wait(0.015)
-        VirtualInputManager:SendMouseButtonEvent(0, 0, 0, false, game, 0)
+        local remotes = ReplicatedStorage:FindFirstChild("Remotes")
+        local commE = remotes and remotes:FindFirstChild("CommE")
+        if commE and commE:IsA("RemoteEvent") then commE:FireServer("weaponAttack") end
+        local rigController = ReplicatedStorage:FindFirstChild("RigControllerEvent")
+        if rigController and rigController:IsA("RemoteEvent") then rigController:FireServer("weaponAttack") end
     end)
-    sendingVirtualAttack = false
-    if inputOk then lastAttackMethod = "VirtualInput dự phòng" end
-    return activated or inputOk
+
+    -- 5. Click ảo VirtualUser làm dự phòng
+    pcall(function()
+        if VirtualUser then
+            local cam = workspace.CurrentCamera
+            local cf = cam and cam.CFrame or CFrame.new()
+            VirtualUser:ClickButton1(Vector2.new(500, 500), cf)
+        end
+    end)
+
+    lastAttackMethod = "Đang đánh (" .. tool.Name .. ")"
+    return true
 end-- ====== Auto Skill (dùng Z, X, C, V) ======
 local lastSkillTime = 0
 local skillSequenceBusy = false
@@ -1181,10 +1190,10 @@ end
 -- ====== Trang bị vũ khí theo loại ======
 local function equipWeapon(weaponType)
     pcall(function()
-        local backpack = Player:FindFirstChild("Backpack")
         local char = Player.Character
         local humanoid = char and char:FindFirstChildOfClass("Humanoid")
-        if not backpack or not humanoid then return end
+        local backpack = Player:FindFirstChild("Backpack")
+        if not char or not humanoid then return end
 
         weaponType = weaponType or _G.SelectWeapon or "Melee"
 
@@ -1193,34 +1202,40 @@ local function equipWeapon(weaponType)
         if equipped then
             local eqName = equipped.Name
             local eqTip = equipped.ToolTip or ""
-            if weaponType == "Melee" and (table.find(MeleeNames, eqName) or eqTip == "Melee" or eqName == "Combat" or eqTip:find("Melee")) then return end
-            if weaponType == "Sword" and (table.find(SwordNames, eqName) or eqTip == "Sword" or eqTip:find("Sword")) then return end
-            if weaponType == "Gun" and (table.find(GunNames, eqName) or eqTip == "Gun" or eqTip:find("Gun")) then return end
-            if weaponType == "Blox Fruit" and (eqTip == "Blox Fruit" or eqName:find("Fruit") or eqTip:find("Fruit")) then return end
+            local isMatch = false
+            if weaponType == "Melee" and (table.find(MeleeNames, eqName) or eqTip == "Melee" or eqName == "Combat" or eqTip:find("Melee") or eqName:lower():find("combat") or eqName:lower():find("style")) then isMatch = true end
+            if weaponType == "Sword" and (table.find(SwordNames, eqName) or eqTip == "Sword" or eqTip:find("Sword") or eqName:lower():find("sword")) then isMatch = true end
+            if weaponType == "Gun" and (table.find(GunNames, eqName) or eqTip == "Gun" or eqTip:find("Gun") or eqName:lower():find("gun")) then isMatch = true end
+            if weaponType == "Blox Fruit" and (eqTip == "Blox Fruit" or eqName:find("Fruit") or eqTip:find("Fruit") or eqName:lower():find("fruit")) then isMatch = true end
+            if isMatch then return end
         end
 
         -- Tìm trong Backpack vũ khí khớp với loại được chọn
-        for _, tool in ipairs(backpack:GetChildren()) do
-            if tool:IsA("Tool") then
-                local tName = tool.Name
-                local tTip = tool.ToolTip or ""
-                local match = false
-                if weaponType == "Melee" and (table.find(MeleeNames, tName) or tTip == "Melee" or tName == "Combat" or tTip:find("Melee")) then match = true end
-                if weaponType == "Sword" and (table.find(SwordNames, tName) or tTip == "Sword" or tTip:find("Sword")) then match = true end
-                if weaponType == "Gun" and (table.find(GunNames, tName) or tTip == "Gun" or tTip:find("Gun")) then match = true end
-                if weaponType == "Blox Fruit" and (tTip == "Blox Fruit" or tName:find("Fruit") or tTip:find("Fruit")) then match = true end
+        if backpack then
+            for _, tool in ipairs(backpack:GetChildren()) do
+                if tool:IsA("Tool") then
+                    local tName = tool.Name
+                    local tTip = tool.ToolTip or ""
+                    local match = false
+                    if weaponType == "Melee" and (table.find(MeleeNames, tName) or tTip == "Melee" or tName == "Combat" or tTip:find("Melee") or tName:lower():find("combat") or tName:lower():find("style")) then match = true end
+                    if weaponType == "Sword" and (table.find(SwordNames, tName) or tTip == "Sword" or tTip:find("Sword") or tName:lower():find("sword")) then match = true end
+                    if weaponType == "Gun" and (table.find(GunNames, tName) or tTip == "Gun" or tTip:find("Gun") or tName:lower():find("gun")) then match = true end
+                    if weaponType == "Blox Fruit" and (tTip == "Blox Fruit" or tName:find("Fruit") or tTip:find("Fruit") or tName:lower():find("fruit")) then match = true end
 
-                if match then
-                    humanoid:EquipTool(tool)
-                    return
+                    if match then
+                        tool.Parent = char
+                        humanoid:EquipTool(tool)
+                        return
+                    end
                 end
             end
-        end
 
-        -- Nếu không tìm thấy loại chỉ định, tự động cầm Tool đầu tiên có trong Backpack
-        local fallback = backpack:FindFirstChildOfClass("Tool")
-        if fallback then
-            humanoid:EquipTool(fallback)
+            -- Fallback: Cầm Tool đầu tiên có trong Backpack
+            local fallback = backpack:FindFirstChildOfClass("Tool")
+            if fallback then
+                fallback.Parent = char
+                humanoid:EquipTool(fallback)
+            end
         end
     end)
 end
