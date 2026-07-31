@@ -2567,13 +2567,12 @@ local function formatShopAmount(value)
 end
 
 local function findStyleTool(entry)
-    local toolName = entry and styleToolNames[entry.Id]
-    if not toolName then return nil end
+    if not entry then return nil end
+    local mainToolName = styleToolNames[entry.Id] or entry.Id
     local character = Player.Character
     local backpack = Player:FindFirstChildOfClass("Backpack")
-    local tool = character and character:FindFirstChild(toolName)
-    if tool and tool:IsA("Tool") then return tool end
-    tool = backpack and backpack:FindFirstChild(toolName)
+    local tool = (character and (character:FindFirstChild(mainToolName) or character:FindFirstChild(entry.Id)))
+        or (backpack and (backpack:FindFirstChild(mainToolName) or backpack:FindFirstChild(entry.Id)))
     if tool and tool:IsA("Tool") then return tool end
     return nil
 end
@@ -2632,16 +2631,19 @@ CombatShop.GetStyleId = function(label)
 end
 
 CombatShop.GetStyleLabel = function(styleId)
-    local entry = styleById[styleId]
+    local realId = CombatShop.GetStyleId(styleId)
+    local entry = styleById[realId] or styleById[styleId]
     return entry and entry.Label or CombatShop.StyleLabels[1]
 end
 
 CombatShop.GetStyleInfo = function(styleId)
-    return styleById[styleId]
+    local realId = CombatShop.GetStyleId(styleId)
+    return styleById[realId] or styleById[styleId]
 end
 
 CombatShop.BuyStyle = function(styleId)
-    local entry = styleById[styleId]
+    local realId = CombatShop.GetStyleId(styleId)
+    local entry = styleById[realId] or styleById[styleId]
     if not entry then
         notify("Cửa hàng cận chiến", "Chưa chọn phong cách hợp lệ.", 4)
         return false
@@ -2652,7 +2654,21 @@ CombatShop.BuyStyle = function(styleId)
         invokeCombatShop("BlackbeardReward", "DragonClaw", "1")
         ok, result = invokeCombatShop("BlackbeardReward", "DragonClaw", "2")
     else
-        ok, result = invokeCombatShop(entry.Command)
+        -- Trong Blox Fruits, gửi true để xác nhận mua/trang bị võ
+        ok, result = invokeCombatShop(entry.Command, true)
+        if not ok or result == 0 or tostring(result) == "0" or result == nil then
+            -- Fallback thử chuỗi "1"/"2" hoặc tham số mặc định
+            invokeCombatShop(entry.Command, "1")
+            local ok2, result2 = invokeCombatShop(entry.Command, "2")
+            if ok2 and result2 ~= nil and result2 ~= 0 then
+                ok, result = ok2, result2
+            else
+                local ok3, result3 = invokeCombatShop(entry.Command)
+                if ok3 and result3 ~= nil then
+                    ok, result = ok3, result3
+                end
+            end
+        end
     end
 
     local verifiedTool = ok and waitForStyleTool(entry, 2.5) or nil
@@ -2667,7 +2683,8 @@ CombatShop.BuyStyle = function(styleId)
 end
 
 CombatShop.ShowStyleInfo = function(styleId)
-    local entry = styleById[styleId]
+    local realId = CombatShop.GetStyleId(styleId)
+    local entry = styleById[realId] or styleById[styleId]
     if not entry then return end
     notify(
         entry.Id,
