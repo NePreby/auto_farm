@@ -3975,9 +3975,9 @@ task.spawn(function()
 
                 if method == "Quest" then
                     local expectedSignature = questSignature(quest)
-                    if hasActiveQuest() and acceptedQuestSignature
-                        and acceptedQuestSignature ~= expectedSignature then
-                        lastFarmStatus = "Đang đổi sang quest đúng cấp"
+                    if hasActiveQuest() and acceptedQuestSignature ~= expectedSignature then
+                        lastFarmStatus = "Đang đổi sang quest đúng cấp: "
+                            .. tostring(quest.MobName) .. " (" .. expectedSignature .. ")"
                         abandonQuest()
                         acceptedQuestSignature = nil
                         task.wait(0.35)
