@@ -229,28 +229,6 @@ Player.CharacterAdded:Connect(function(char)
     task.wait(0.5) -- Đợi character load xong
 end)
 
--- Nhận diện Sea hiện tại dựa trên PlaceId (kèm Fallback theo Workspace nếu ở Server riêng/Subplace)
-local PlaceId = game.PlaceId
-local WorldSea = 1
-if PlaceId == 2753915549 then 
-    WorldSea = 1
-elseif PlaceId == 4442272183 then 
-    WorldSea = 2
-elseif PlaceId == 7449423635 then 
-    WorldSea = 3
-else
-    local map = Workspace:FindFirstChild("Map") or Workspace:FindFirstChild("WorldOrigin")
-    local npcs = Workspace:FindFirstChild("NPCs")
-    if (map and (map:FindFirstChild("Cafe") or map:FindFirstChild("Kingdom of Rose") or map:FindFirstChild("Green Zone") or map:FindFirstChild("Ice Side")))
-        or (npcs and (npcs:FindFirstChild("Manager") or npcs:FindFirstChild("Bartilo"))) then
-        WorldSea = 2
-    elseif (map and (map:FindFirstChild("Tiki Outpost") or map:FindFirstChild("Turtle") or map:FindFirstChild("Port Town") or map:FindFirstChild("Haunted Castle")))
-        or (npcs and npcs:FindFirstChild("Horned Man")) then
-        WorldSea = 3
-    else
-        WorldSea = 1
-    end
-end
 -- Truy cập dữ liệu người chơi theo một đường duy nhất, chịu được lúc Data tải chậm.
 local function getPlayerData()
     return Player:FindFirstChild("Data")
@@ -272,6 +250,38 @@ end
 local function getPlayerBeli()
     return tonumber(getPlayerValue("Beli", 0)) or 0
 end
+
+-- Nhận diện Sea hiện tại dựa trên PlaceId, Map, NPCs, Enemies và Level
+local function detectWorldSea()
+    local placeId = game.PlaceId
+    if placeId == 4442272183 then return 2 end
+    if placeId == 7449423635 then return 3 end
+    if placeId == 2753915549 then return 1 end
+
+    local map = Workspace:FindFirstChild("Map") or Workspace:FindFirstChild("WorldOrigin")
+    local npcs = Workspace:FindFirstChild("NPCs")
+    local enemies = Workspace:FindFirstChild("Enemies")
+
+    if (map and (map:FindFirstChild("Cafe") or map:FindFirstChild("Kingdom of Rose") or map:FindFirstChild("Green Zone") or map:FindFirstChild("Ice Side") or map:FindFirstChild("Hot and Cold") or map:FindFirstChild("Cursed Ship")))
+        or (npcs and (npcs:FindFirstChild("Manager") or npcs:FindFirstChild("Bartilo") or npcs:FindFirstChild("Trevor")))
+        or (enemies and (enemies:FindFirstChild("Raider") or enemies:FindFirstChild("Mercenary") or enemies:FindFirstChild("Swan Pirate") or enemies:FindFirstChild("Factory Staff") or enemies:FindFirstChild("Jeremy") or enemies:FindFirstChild("Fajita") or enemies:FindFirstChild("Don Swan"))) then
+        return 2
+    end
+
+    if (map and (map:FindFirstChild("Tiki Outpost") or map:FindFirstChild("Turtle") or map:FindFirstChild("Port Town") or map:FindFirstChild("Haunted Castle") or map:FindFirstChild("Hydra Island")))
+        or (npcs and (npcs:FindFirstChild("Horned Man") or npcs:FindFirstChild("Lunarian")))
+        or (enemies and (enemies:FindFirstChild("Pirate Millionaire") or enemies:FindFirstChild("Dragon Crew Warrior") or enemies:FindFirstChild("Marine Commodore") or enemies:FindFirstChild("Katakuri"))) then
+        return 3
+    end
+
+    local lvl = getPlayerLevel()
+    if lvl >= 1500 then return 3
+    elseif lvl >= 700 then return 2
+    else return 1
+    end
+end
+
+local WorldSea = detectWorldSea()
 
 ------------------------------------------------------------
 -- PHẦN 1.5: LOAD FLUENT UI LIBRARY
@@ -471,6 +481,8 @@ setDefault("AutoRedeemExpCodes", true)
 setDefault("AutoRedeemResetCodes", false)
 setDefault("AutoChooseTeam", true)
 setDefault("PreferredTeam", "Pirates")
+setDefault("AutoUpdateFromGit", false)
+setDefault("HAOTOOL_GIT_URL", "https://raw.githubusercontent.com/NePreby/auto_farm/main/dist/main.lua")
 
 -- Teleport
 setDefault("SelectedIsland", "")
@@ -509,6 +521,7 @@ local TELEPORT_STATE_KEYS = {
     "AutoStats", "StatToUpgrade", "ServerHopNoFruit", "LowServerMaxPlayers",
     "AutoRedeemExpCodes", "AutoRedeemResetCodes",
     "AutoChooseTeam", "PreferredTeam",
+    "AutoUpdateFromGit", "HAOTOOL_GIT_URL",
     "SelectedIsland", "SelectedNPC", "SelectedBossTP",
 }
 
@@ -3875,6 +3888,91 @@ FactoryModule.GetStatus = function()
 end
 end
 
+-- ====== Tự động kiểm tra và Cập nhật Script từ GitHub ======
+local GitUpdateModule = {}
+do
+local isUpdating = false
+
+GitUpdateModule.Check = function(isManual)
+    if isUpdating then return false end
+    isUpdating = true
+
+    local url = _G.HAOTOOL_GIT_URL
+    if type(url) ~= "string" or url == "" then
+        url = "https://raw.githubusercontent.com/NePreby/auto_farm/main/dist/main.lua"
+    end
+
+    if not game or type(game.HttpGet) ~= "function" then
+        isUpdating = false
+        if isManual then
+            notify("Tự Động Cập Nhật", "Trình thực thi không hỗ trợ game:HttpGet.", 5)
+        end
+        return false
+    end
+
+    if isManual then
+        notify("Tự Động Cập Nhật", "Đang kết nối GitHub để tải phiên bản mới nhất...", 4)
+    end
+
+    local fetchOk, remoteSource = pcall(function()
+        return game:HttpGet(url .. "?t=" .. os.time())
+    end)
+
+    if not fetchOk or type(remoteSource) ~= "string" or #remoteSource < 200 then
+        isUpdating = false
+        if isManual then
+            notify("Cập Nhật Thất Bại", "Không tải được mã nguồn từ GitHub. Hãy kiểm tra kết nối mạng hoặc URL.", 6)
+        end
+        return false
+    end
+
+    local runner, compileError = loadstring(remoteSource, "@HAOTOOL_GitAutoUpdate")
+    if not runner then
+        isUpdating = false
+        if isManual then
+            notify("Lỗi Biên Dịch Git", "Mã nguồn trên GitHub bị lỗi: " .. tostring(compileError), 6)
+        end
+        return false
+    end
+
+    local remoteVersion = string.match(remoteSource, 'RequestedScriptVersion = "([^"]+)"') or "Mới"
+    local currentVersion = RequestedScriptVersion or "2.3.4"
+
+    if isManual or remoteVersion ~= currentVersion then
+        if type(writefile) == "function" then
+            pcall(function()
+                writefile(TELEPORT_SCRIPT_FILE, remoteSource)
+            end)
+        end
+
+        notify("Cập Nhật Thành Công!", "Đã nạp phiên bản v" .. remoteVersion .. " từ GitHub. Đang khởi động lại giao diện...", 5)
+        task.wait(0.8)
+
+        local destroyOldUI = RuntimeEnv.HAOTOOL_DESTROY_UI
+        RuntimeEnv.HAOTOOL_RUN_TOKEN = {}
+        RuntimeEnv.HAOTOOL_RUNNING = nil
+        RuntimeEnv.HAOTOOL_TOGGLE_MENU = nil
+        RuntimeEnv.HAOTOOL_DESTROY_UI = nil
+        if type(destroyOldUI) == "function" then pcall(destroyOldUI) end
+        task.wait(0.2)
+
+        local runOk, runError = pcall(runner)
+        isUpdating = false
+        if not runOk then
+            notify("Lỗi Khởi Chạy", "Không thể khởi chạy bản mới: " .. tostring(runError), 6)
+            return false
+        end
+        return true
+    else
+        isUpdating = false
+        if isManual then
+            notify("Đã Mới Nhất", "Bạn đang sử dụng phiên bản mới nhất từ Git (v" .. currentVersion .. ").", 4)
+        end
+        return false
+    end
+end
+end
+
 ------------------------------------------------------------
 -- PHẦN 5: HỆ THỐNG ESP
 ------------------------------------------------------------
@@ -4246,6 +4344,32 @@ task.spawn(function()
         end
     end
 end)
+-- ====== LOOP 0: Tự động cập nhật WorldSea khi chuyển vùng / load map ======
+task.spawn(function()
+    while RuntimeEnv.HAOTOOL_RUN_TOKEN == CurrentRunToken do
+        task.wait(1)
+        local detectedSea = detectWorldSea()
+        if detectedSea and detectedSea ~= WorldSea then
+            WorldSea = detectedSea
+            pcall(function()
+                if Window and type(Window.SetSubTitle) == "function" then
+                    Window:SetSubTitle("V" .. RequestedScriptVersion .. "  •  Biển " .. WorldSea .. "  |  Trung tâm điều khiển")
+                end
+            end)
+        end
+    end
+end)
+
+-- ====== Tự động kiểm tra bản cập nhật từ Git khi khởi động ======
+task.spawn(function()
+    task.wait(3)
+    if RuntimeEnv.HAOTOOL_RUN_TOKEN == CurrentRunToken and _G.AutoUpdateFromGit then
+        pcall(function()
+            GitUpdateModule.Check(false)
+        end)
+    end
+end)
+
 -- ====== LOOP 5: Duy trì Haki / Observation ======
 task.spawn(function()
     while RuntimeEnv.HAOTOOL_RUN_TOKEN == CurrentRunToken do
@@ -6481,6 +6605,39 @@ UtilitySection:AddButton({
     end
 })
 
+local GitUpdateSection = SettingsTab:AddSection("Cập nhật tự động từ GitHub")
+
+GitUpdateSection:AddInput("GitUrlInput", {
+    Title = "Đường dẫn GitHub Raw Script",
+    Description = "Đường dẫn Raw file main.lua/dist trên GitHub.",
+    Default = _G.HAOTOOL_GIT_URL,
+    Placeholder = "https://raw.githubusercontent.com/...",
+    Callback = function(v)
+        if type(v) == "string" and v ~= "" then
+            _G.HAOTOOL_GIT_URL = v
+        end
+    end,
+})
+
+GitUpdateSection:AddToggle("AutoUpdateFromGit", {
+    Title = "Tự động kiểm tra bản mới từ GitHub khi mở script",
+    Description = "Tự động kết nối Git để kiểm tra và nạp bản mới nếu có.",
+    Default = _G.AutoUpdateFromGit,
+    Callback = function(v)
+        _G.AutoUpdateFromGit = v
+    end,
+})
+
+GitUpdateSection:AddButton({
+    Title = "Kiểm tra & Cập nhật ngay từ GitHub",
+    Description = "Tải trực tiếp mã nguồn mới nhất từ Git và tự động nạp lại giao diện.",
+    Callback = function()
+        task.spawn(function()
+            GitUpdateModule.Check(true)
+        end)
+    end,
+})
+
 -- Lưu/Tải cấu hình (nếu SaveManager tồn tại)
 if SaveManager and InterfaceManager then
     pcall(function()
@@ -6554,6 +6711,8 @@ if type(teleportState) == "table" and Fluent and Fluent.Options then
         SelectedBossDrop = "SelectedBoss",
         AutoFarmSeaBeast = "AutoFarmSeaBeast",
         AutoFactory = "AutoFactory",
+        AutoUpdateFromGit = "AutoUpdateFromGit",
+        GitUrlInput = "HAOTOOL_GIT_URL",
         AutoFarmObs = "AutoFarmObs",
         AutoFarmBone = "AutoFarmBone",
         AutoFarmFragment = "AutoFarmFragment",
