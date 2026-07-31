@@ -229,12 +229,27 @@ Player.CharacterAdded:Connect(function(char)
     task.wait(0.5) -- Đợi character load xong
 end)
 
--- Nhận diện Sea hiện tại dựa trên PlaceId
+-- Nhận diện Sea hiện tại dựa trên PlaceId (kèm Fallback theo Workspace nếu ở Server riêng/Subplace)
 local PlaceId = game.PlaceId
 local WorldSea = 1
-if PlaceId == 2753915549 then WorldSea = 1
-elseif PlaceId == 4442272183 then WorldSea = 2
-elseif PlaceId == 7449423635 then WorldSea = 3
+if PlaceId == 2753915549 then 
+    WorldSea = 1
+elseif PlaceId == 4442272183 then 
+    WorldSea = 2
+elseif PlaceId == 7449423635 then 
+    WorldSea = 3
+else
+    local map = Workspace:FindFirstChild("Map") or Workspace:FindFirstChild("WorldOrigin")
+    local npcs = Workspace:FindFirstChild("NPCs")
+    if (map and (map:FindFirstChild("Cafe") or map:FindFirstChild("Kingdom of Rose") or map:FindFirstChild("Green Zone") or map:FindFirstChild("Ice Side")))
+        or (npcs and (npcs:FindFirstChild("Manager") or npcs:FindFirstChild("Bartilo"))) then
+        WorldSea = 2
+    elseif (map and (map:FindFirstChild("Tiki Outpost") or map:FindFirstChild("Turtle") or map:FindFirstChild("Port Town") or map:FindFirstChild("Haunted Castle")))
+        or (npcs and npcs:FindFirstChild("Horned Man")) then
+        WorldSea = 3
+    else
+        WorldSea = 1
+    end
 end
 -- Truy cập dữ liệu người chơi theo một đường duy nhất, chịu được lúc Data tải chậm.
 local function getPlayerData()
@@ -3093,22 +3108,31 @@ local function handleSickManStage(desert)
     end
 
     cup = equipQuestTool("Cup")
-    local handle = cup and cup:FindFirstChild("Handle")
-    local cupIsEmpty = handle and (handle:FindFirstChild("TouchInterest")
-        or handle:FindFirstChildOfClass("TouchTransmitter"))
-    if cupIsEmpty then
+    local isFull = cup and (cup:FindFirstChild("Water", true) or cup:FindFirstChild("Liquid", true) or cup:FindFirstChild("Full", true)) ~= nil
+
+    if not isFull then
         if travelSaberQuest("nguồn nước tại Frozen Village", SABER_POINTS.Water) then
-            local equippedCup = equipQuestTool("Cup")
+            local equippedCup = equipQuestTool("Cup") or cup
+            
+            -- Chạm vào giọt nước đọng trong hang nếu có
+            local map = workspace:FindFirstChild("Map")
+            local frozen = map and map:FindFirstChild("Frozen Village")
+            local waterDrop = frozen and frozen:FindFirstChild("Water", true)
+            if waterDrop then
+                touchQuestPart(resolveQuestPart(waterDrop), equippedCup)
+            end
+
             invokeSaberProgress("FillCup", equippedCup)
-            setSaberQuestStatus("Đã lấy nước; chuẩn bị đưa Cup cho Sick Man")
-            task.wait(0.6)
+            setSaberQuestStatus("Đang hứng nước tại Frozen Village...")
+            task.wait(0.8)
         end
         return
     end
 
     if travelSaberQuest("Sick Man tại Frozen Village", SABER_POINTS.SickMan) then
-        invokeSaberProgress("SickMan")
-        setSaberQuestStatus("Đã đưa Cup cho Sick Man")
+        local equippedCup = equipQuestTool("Cup") or cup
+        invokeSaberProgress("SickMan", equippedCup)
+        setSaberQuestStatus("Đã đưa Cup đầy nước cho Sick Man")
         task.wait(0.7)
     end
 end
