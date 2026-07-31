@@ -396,6 +396,7 @@ setDefault("MasteryWeapon", "Melee")
 setDefault("AutoFarmBoss", false)
 setDefault("SelectedBoss", "")
 setDefault("AutoFarmSeaBeast", false)
+setDefault("AutoFactory", false)
 setDefault("AutoFarmObs", false)
 setDefault("AutoFarmBone", false)
 setDefault("AutoFarmFragment", false)
@@ -492,7 +493,7 @@ end
 
 local TELEPORT_STATE_KEYS = {
     "AutoFarmLevel", "AutoFarmMastery", "MasteryWeapon",
-    "AutoFarmBoss", "SelectedBoss", "AutoFarmSeaBeast",
+    "AutoFarmBoss", "SelectedBoss", "AutoFarmSeaBeast", "AutoFactory",
     "AutoFarmObs", "AutoFarmBone", "AutoFarmFragment", "AutoFarmChest",
     "SelectWeapon", "FarmMethod", "SelectedMob",
     "BringMob", "BringRadius", "FarmHeight", "FarmDistance",
@@ -1009,6 +1010,7 @@ local function getActiveMovementMode()
     if manualMovementActive or os.clock() < manualMovementPauseUntil then return "manual" end
     -- Trái đang tồn tại được nhặt trước, sau đó tự trả quyền di chuyển cho farm.
     if _G.AutoCollectFruit and activeFruitTarget and activeFruitTarget.Parent then return "fruit" end
+    if _G.AutoFactory then return "factory" end
     if _G.AutoSaberQuest then return "saber" end
     if _G.AutoFarmLevel then return "level" end
     if _G.AutoFarmBoss then return "boss" end
@@ -3814,6 +3816,65 @@ local function startSelectedRaid()
     return false
 end
 
+-- ====== Tự động đánh Nhà Máy (Sea 2) ======
+local FactoryModule = {}
+do
+local lastFactoryStatus = "Chờ Nhà Máy xuất hiện"
+local FACTORY_CORE_POS = Vector3.new(424.387, 211.750, -429.620)
+
+local function findFactoryCore()
+    local enemies = workspace:FindFirstChild("Enemies")
+    if enemies then
+        local core = enemies:FindFirstChild("Core")
+        if core and core:FindFirstChild("Humanoid") and core.Humanoid.Health > 0 then
+            return core
+        end
+    end
+    local map = workspace:FindFirstChild("Map")
+    local factory = map and map:FindFirstChild("Factory")
+    if factory then
+        local core = factory:FindFirstChild("Core", true)
+        if core and core:FindFirstChild("Humanoid") and core.Humanoid.Health > 0 then
+            return core
+        end
+    end
+    for _, child in ipairs(workspace:GetChildren()) do
+        if child.Name == "Core" and child:FindFirstChild("Humanoid") and child.Humanoid.Health > 0 then
+            return child
+        end
+    end
+    return nil
+end
+
+FactoryModule.ShouldRun = function()
+    return _G.AutoFactory and WorldSea == 2 and modeCanMove("factory")
+end
+
+FactoryModule.Step = function()
+    if not _G.AutoFactory or not modeCanMove("factory") then return end
+    if WorldSea ~= 2 then
+        lastFactoryStatus = "Auto Factory chỉ hoạt động tại Biển 2."
+        clearFarmTarget()
+        return
+    end
+
+    local core = findFactoryCore()
+    if core then
+        lastFactoryStatus = "Đang tấn công Lõi Nhà Máy (Core)"
+        equipWeapon(_G.SelectWeapon)
+        engageTarget(core, "Core", _G.SelectWeapon)
+    else
+        clearFarmTarget()
+        lastFactoryStatus = "Đang chờ Lõi Nhà Máy xuất hiện..."
+        toTarget(CFrame.new(FACTORY_CORE_POS + Vector3.new(0, 18, 0)))
+    end
+end
+
+FactoryModule.GetStatus = function()
+    return lastFactoryStatus
+end
+end
+
 ------------------------------------------------------------
 -- PHẦN 5: HỆ THỐNG ESP
 ------------------------------------------------------------
@@ -4146,6 +4207,24 @@ task.spawn(function()
                     end
                 end
                 clearFarmTarget()
+            end)
+        end
+    end
+end)
+
+-- ====== LOOP 6: Auto Farm Factory Sea 2 ======
+task.spawn(function()
+    while RuntimeEnv.HAOTOOL_RUN_TOKEN == CurrentRunToken do
+        task.wait(0.05)
+        if _G.AutoFactory and modeCanMove("factory") then
+            runFeature("Auto Factory", function()
+                if WorldSea ~= 2 then
+                    notify("Auto Factory", "Chỉ hoạt động tại Biển 2 (Kingdom of Rose).", 4)
+                    _G.AutoFactory = false
+                    stopFarmMovement()
+                    return
+                end
+                FactoryModule.Step()
             end)
         end
     end
@@ -5471,7 +5550,20 @@ FarmBossSection:AddToggle("AutoFarmSeaBeast", {
     Callback = function(v)
         _G.AutoFarmSeaBeast = v
         if not v and not _G.AutoFarmLevel and not _G.AutoFarmMastery
-            and not _G.AutoFarmBoss then
+            and not _G.AutoFarmBoss and not _G.AutoFactory then
+            stopFarmMovement()
+        end
+    end,
+})
+
+FarmBossSection:AddToggle("AutoFactory", {
+    Title = "Tự động đánh Nhà Máy (Sea 2)",
+    Description = "Tự động bay đến khu vực Nhà Máy và phá hủy Lõi (Core) khi sự kiện mở ra.",
+    Default = _G.AutoFactory,
+    Callback = function(v)
+        _G.AutoFactory = v
+        if not v and not _G.AutoFarmLevel and not _G.AutoFarmMastery
+            and not _G.AutoFarmBoss and not _G.AutoFarmSeaBeast then
             stopFarmMovement()
         end
     end,
@@ -6461,6 +6553,7 @@ if type(teleportState) == "table" and Fluent and Fluent.Options then
         AutoFarmBoss = "AutoFarmBoss",
         SelectedBossDrop = "SelectedBoss",
         AutoFarmSeaBeast = "AutoFarmSeaBeast",
+        AutoFactory = "AutoFactory",
         AutoFarmObs = "AutoFarmObs",
         AutoFarmBone = "AutoFarmBone",
         AutoFarmFragment = "AutoFarmFragment",
