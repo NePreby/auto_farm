@@ -43,7 +43,24 @@ RuntimeEnv.HAOTOOL_TAB_COUNT = 0
 if not game:IsLoaded() then game.Loaded:Wait() end
 task.wait(1)
 
--- Services chính
+-- ====== NÂNG CẤP BẢO VỆ ANTI-BAN 100% (ANTI-KICK CLIENT HOOK) ======
+pcall(function()
+    if hookmetamethod and checkcaller then
+        local oldNamecall
+        oldNamecall = hookmetamethod(game, "__namecall", function(self, ...)
+            local method = getnamecallmethod()
+            if not checkcaller() then
+                if (method == "Kick" or method == "kick") and self == Player then
+                    warn("[HAOTOOL ANTI-BAN] Đã chặn lệnh Kick từ game client!")
+                    return nil
+                end
+            end
+            return oldNamecall(self, ...)
+        end)
+    end
+end)
+
+-- Choose team before waiting for character
 local Players             = game:GetService("Players")
 local Player              = Players.LocalPlayer
 local TweenService        = game:GetService("TweenService")
@@ -489,6 +506,7 @@ setDefault("AutoRedeemExpCodes", true)
 setDefault("AutoRedeemResetCodes", false)
 setDefault("AutoChooseTeam", true)
 setDefault("PreferredTeam", "Pirates")
+setDefault("AutoHopAdmin", true)
 setDefault("AutoUpdateFromGit", false)
 setDefault("HAOTOOL_GIT_URL", "https://raw.githubusercontent.com/NePreby/auto_farm/main/dist/main.lua")
 
@@ -529,7 +547,7 @@ local TELEPORT_STATE_KEYS = {
     "AutoStats", "StatToUpgrade", "ServerHopNoFruit", "LowServerMaxPlayers",
     "AutoRedeemExpCodes", "AutoRedeemResetCodes",
     "AutoChooseTeam", "PreferredTeam",
-    "AutoUpdateFromGit", "HAOTOOL_GIT_URL",
+    "AutoHopAdmin", "AutoUpdateFromGit", "HAOTOOL_GIT_URL",
     "SelectedIsland", "SelectedNPC", "SelectedBossTP",
 }
 
@@ -1145,7 +1163,7 @@ local function holdFarmTarget(target)
     setNoclip(true)
 end
 
--- Giữ nhân vật đứng yên tương đối với quái; không chạy/chase trong lúc đánh.
+-- Giữ nhân vật đứng yên tương đối với quái mượt mà; không giật lag/chase trong lúc đánh.
 RunService.Heartbeat:Connect(function()
     if RuntimeEnv.HAOTOOL_RUN_TOKEN ~= CurrentRunToken then return end
     pcall(function()
@@ -1168,7 +1186,8 @@ RunService.Heartbeat:Connect(function()
             return
         end
 
-        rootPart.CFrame = getFarmCFrame(targetRoot)
+        local goalCFrame = getFarmCFrame(targetRoot)
+        rootPart.CFrame = rootPart.CFrame:Lerp(goalCFrame, 0.4)
         rootPart.AssemblyLinearVelocity = Vector3.zero
         rootPart.AssemblyAngularVelocity = Vector3.zero
         humanoid.AutoRotate = false
@@ -1176,21 +1195,43 @@ RunService.Heartbeat:Connect(function()
     end)
 end)
 
--- ====== Bay tới mục tiêu (Tween), tự hủy khi chuyển sang đánh ======
--- Hành trình xa đi theo 3 chặng: nâng độ cao, bay ngang, rồi hạ xuống.
--- Cách này giữ nhân vật cách xa mặt biển khi chuyển giữa các đảo/map.
+-- ====== Bay tới mục tiêu (Tween) mượt mà siêu tốc, tự hủy khi chuyển sang đánh ======
 local LONG_TRAVEL_DISTANCE = 500
 local MIN_SAFE_CRUISE_Y = 350
 local SAFE_CRUISE_CLEARANCE = 120
+local currentTweenTargetPos = nil
 
 local function toTarget(targetCFrame)
     if typeof(targetCFrame) == "Vector3" then targetCFrame = CFrame.new(targetCFrame) end
     if typeof(targetCFrame) ~= "CFrame" then return false end
+
+    local char = Player.Character
+    local rootPart = char and char:FindFirstChild("HumanoidRootPart")
+    if not char or not rootPart then return false end
+
+    local targetPos = targetCFrame.Position
+    local currentPos = rootPart.Position
+    local distance = (currentPos - targetPos).Magnitude
+
+    if distance < 15 then
+        if currentTween then
+            pcall(function() currentTween:Cancel() end)
+            currentTween = nil
+        end
+        rootPart.CFrame = targetCFrame
+        rootPart.AssemblyLinearVelocity = Vector3.zero
+        farmState = "idle"
+        setNoclip(false)
+        return true
+    end
+
+    -- Nếu đang tween tới điểm gần tương tự (dưới 10 studs), giữ nguyên tween để di chuyển mượt không bị khựng
+    if currentTween and currentTweenTargetPos and (currentTweenTargetPos - targetPos).Magnitude < 10 then
+        return true
+    end
+
     movementSerial = movementSerial + 1
     local requestId = movementSerial
-    local char = Player.Character
-    if not char or not char:FindFirstChild("HumanoidRootPart") then return false end
-
     clearFarmTarget()
     farmState = "moving"
 
@@ -1199,18 +1240,19 @@ local function toTarget(targetCFrame)
         currentTween = nil
     end
 
-    local rootPart = char.HumanoidRootPart
-    local distance = (rootPart.Position - targetCFrame.Position).Magnitude
+    currentTweenTargetPos = targetPos
+    local speed = 320
 
-    if distance < 15 then
-        rootPart.CFrame = targetCFrame
-        rootPart.AssemblyLinearVelocity = Vector3.zero
-        farmState = "idle"
-        setNoclip(false)
-        return true
+    -- Tạo BodyVelocity hỗ trợ giữ trọng lực mượt mà không bị rơi tự do / giật giật
+    local bv = rootPart:FindFirstChild("HAOTOOL_FlightBV")
+    if not bv then
+        bv = Instance.new("BodyVelocity")
+        bv.Name = "HAOTOOL_FlightBV"
+        bv.MaxForce = Vector3.new(0, 9e8, 0)
+        bv.Velocity = Vector3.zero
+        bv.Parent = rootPart
     end
 
-    local speed = 300
     local function tweenSegment(segmentCFrame)
         if requestId ~= movementSerial or not rootPart.Parent then return false end
 
@@ -1238,37 +1280,43 @@ local function toTarget(targetCFrame)
     setNoclip(true)
 
     local startPosition = rootPart.Position
-    local targetPosition = targetCFrame.Position
     local horizontalOffset = Vector3.new(
-        targetPosition.X - startPosition.X,
+        targetPos.X - startPosition.X,
         0,
-        targetPosition.Z - startPosition.Z
+        targetPos.Z - startPosition.Z
     )
 
     if horizontalOffset.Magnitude >= LONG_TRAVEL_DISTANCE then
         local cruiseY = math.max(
             MIN_SAFE_CRUISE_Y,
             startPosition.Y + SAFE_CRUISE_CLEARANCE,
-            targetPosition.Y + SAFE_CRUISE_CLEARANCE
+            targetPos.Y + SAFE_CRUISE_CLEARANCE
         )
         local liftCFrame = CFrame.new(startPosition.X, cruiseY, startPosition.Z)
-        local cruiseCFrame = CFrame.new(targetPosition.X, cruiseY, targetPosition.Z)
+        local cruiseCFrame = CFrame.new(targetPos.X, cruiseY, targetPos.Z)
 
         if not tweenSegment(liftCFrame) or not tweenSegment(cruiseCFrame) then
             if requestId == movementSerial then
                 farmState = "idle"
                 setNoclip(false)
+                if bv then bv:Destroy() end
             end
             return false
         end
     end
 
     local arrived = tweenSegment(targetCFrame)
-    if requestId ~= movementSerial then return false end
+    if requestId ~= movementSerial then
+        if bv then bv:Destroy() end
+        return false
+    end
+
     if farmState == "moving" then farmState = "idle" end
     setNoclip(false)
+    if bv then bv:Destroy() end
+    currentTweenTargetPos = nil
 
-    return arrived and (rootPart.Position - targetCFrame.Position).Magnitude <= 25
+    return arrived and (rootPart.Position - targetPos).Magnitude <= 25
 end
 
 -- Dịch chuyển thủ công có quyền ưu tiên, tránh vòng farm hủy tween ngay sau khi bấm nút.
@@ -3937,6 +3985,70 @@ FactoryModule.GetStatus = function()
 end
 end
 
+-- ====== Tự động Đổi Máy Chủ Khi Phát Hiện Admin / Staff ======
+local AdminDetectorModule = {}
+do
+local BLOX_FRUITS_GROUP_ID = 4372130
+local KNOWN_ADMIN_IDS = {
+    [15302636] = "mygame43",
+    [115264609] = "rip_indra",
+    [65691062] = "Zioles",
+    [174780521] = "Uzoth",
+}
+local isHoppingForAdmin = false
+
+local function isPlayerAdmin(plr)
+    if not plr or plr == Player then return false end
+    if KNOWN_ADMIN_IDS[plr.UserId] then return true, KNOWN_ADMIN_IDS[plr.UserId] end
+
+    local okRank, rank = pcall(function() return plr:GetRankInGroup(BLOX_FRUITS_GROUP_ID) end)
+    if okRank and rank and rank >= 2 then
+        local okRole, role = pcall(function() return plr:GetRoleInGroup(BLOX_FRUITS_GROUP_ID) end)
+        return true, okRole and role or ("Blox Fruits Staff (Rank " .. tostring(rank) .. ")")
+    end
+
+    local okRole2, role2 = pcall(function() return plr:GetRoleInGroup(BLOX_FRUITS_GROUP_ID) end)
+    if okRole2 and type(role2) == "string" then
+        local l = role2:lower()
+        if l:find("admin") or l:find("mod") or l:find("staff") or l:find("owner")
+            or l:find("developer") or l:find("tester") then
+            return true, role2
+        end
+    end
+
+    return false
+end
+
+AdminDetectorModule.Check = function()
+    if not _G.AutoHopAdmin or isHoppingForAdmin then return false end
+    for _, plr in ipairs(Players:GetPlayers()) do
+        local isAdmin, adminRole = isPlayerAdmin(plr)
+        if isAdmin then
+            isHoppingForAdmin = true
+            notify("⚠️ CẢNH BÁO ADMIN", string.format("Phát hiện Quản trị viên '%s' (%s)! Đang tự động chuyển máy chủ...", plr.Name, tostring(adminRole)), 10)
+            task.wait(0.5)
+            serverHop(true, _G.LowServerMaxPlayers or 5)
+            return true
+        end
+    end
+    return false
+end
+
+Players.PlayerAdded:Connect(function(plr)
+    if RuntimeEnv.HAOTOOL_RUN_TOKEN ~= CurrentRunToken then return end
+    if _G.AutoHopAdmin and not isHoppingForAdmin then
+        task.wait(1)
+        local isAdmin, adminRole = isPlayerAdmin(plr)
+        if isAdmin then
+            isHoppingForAdmin = true
+            notify("⚠️ CẢNH BÁO ADMIN", string.format("Quản trị viên '%s' (%s) vừa vào server! Đang tự động chuyển máy chủ...", plr.Name, tostring(adminRole)), 10)
+            task.wait(0.5)
+            serverHop(true, _G.LowServerMaxPlayers or 5)
+        end
+    end
+end)
+end
+
 -- ====== Tự động kiểm tra và Cập nhật Script từ GitHub ======
 local GitUpdateModule = {}
 do
@@ -4416,6 +4528,18 @@ task.spawn(function()
         pcall(function()
             GitUpdateModule.Check(false)
         end)
+    end
+end)
+
+-- ====== Tự động quét Admin / Staff trong server định kỳ ======
+task.spawn(function()
+    while RuntimeEnv.HAOTOOL_RUN_TOKEN == CurrentRunToken do
+        task.wait(2)
+        if _G.AutoHopAdmin then
+            pcall(function()
+                AdminDetectorModule.Check()
+            end)
+        end
     end
 end)
 
@@ -5389,6 +5513,15 @@ ServerSection:AddButton({
             local label = teamValueToLabel[normalizedPreferredTeam()] or normalizedPreferredTeam()
             notify(ok and "Đã chọn phe" or "Chưa chọn được phe", ok and label or tostring(message), 4)
         end)
+    end,
+})
+
+ServerSection:AddToggle("AutoHopAdminToggle", {
+    Title = "Tự động đổi máy chủ khi Admin/Staff vào",
+    Description = "Tự động phát hiện Quản trị viên/Admin/Mod Blox Fruits và đổi máy chủ bảo vệ nick.",
+    Default = _G.AutoHopAdmin,
+    Callback = function(v)
+        _G.AutoHopAdmin = v
     end,
 })
 
@@ -6761,6 +6894,7 @@ if type(teleportState) == "table" and Fluent and Fluent.Options then
         SelectedBossDrop = "SelectedBoss",
         AutoFarmSeaBeast = "AutoFarmSeaBeast",
         AutoFactory = "AutoFactory",
+        AutoHopAdminToggle = "AutoHopAdmin",
         AutoUpdateFromGit = "AutoUpdateFromGit",
         GitUrlInput = "HAOTOOL_GIT_URL",
         AutoFarmObs = "AutoFarmObs",
