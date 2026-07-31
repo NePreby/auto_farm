@@ -1026,12 +1026,36 @@ local ACTION_ANIMATION_PRIORITIES = {
     [Enum.AnimationPriority.Action4] = true,
 }
 
+local function isFactoryCoreActive()
+    local enemies = workspace:FindFirstChild("Enemies")
+    if enemies then
+        local core = enemies:FindFirstChild("Core")
+        if core and core:FindFirstChild("Humanoid") and core.Humanoid.Health > 0 then
+            return true
+        end
+    end
+    local map = workspace:FindFirstChild("Map")
+    local factory = map and map:FindFirstChild("Factory")
+    if factory then
+        local core = factory:FindFirstChild("Core", true)
+        if core and core:FindFirstChild("Humanoid") and core.Humanoid.Health > 0 then
+            return true
+        end
+    end
+    for _, child in ipairs(workspace:GetChildren()) do
+        if child.Name == "Core" and child:FindFirstChild("Humanoid") and child.Humanoid.Health > 0 then
+            return true
+        end
+    end
+    return false
+end
+
 -- Chỉ một chế độ được quyền di chuyển nhân vật tại một thời điểm.
 local function getActiveMovementMode()
     if manualMovementActive or os.clock() < manualMovementPauseUntil then return "manual" end
     -- Trái đang tồn tại được nhặt trước, sau đó tự trả quyền di chuyển cho farm.
     if _G.AutoCollectFruit and activeFruitTarget and activeFruitTarget.Parent then return "fruit" end
-    if _G.AutoFactory then return "factory" end
+    if _G.AutoFactory and WorldSea == 2 and isFactoryCoreActive() then return "factory" end
     if _G.AutoSaberQuest then return "saber" end
     if _G.AutoFarmLevel then return "level" end
     if _G.AutoFarmBoss then return "boss" end
@@ -3870,42 +3894,41 @@ local function findFactoryCore()
 end
 
 FactoryModule.ShouldRun = function()
-    return _G.AutoFactory and WorldSea == 2 and modeCanMove("factory")
+    return _G.AutoFactory and WorldSea == 2 and findFactoryCore() ~= nil
 end
 
 FactoryModule.Step = function()
-    if not _G.AutoFactory or not modeCanMove("factory") then return end
+    if not _G.AutoFactory then return end
     if WorldSea ~= 2 then
         lastFactoryStatus = "Auto Factory chỉ hoạt động tại Biển 2."
-        clearFarmTarget()
         return
     end
 
     local core = findFactoryCore()
     if core then
-        lastFactoryStatus = "Đang đánh Lõi Nhà Máy từ trên nóc (An toàn Anti-Ban)"
-        equipWeapon(_G.SelectWeapon)
-        toTarget(CFrame.new(FACTORY_ROOF_POS))
+        if modeCanMove("factory") then
+            lastFactoryStatus = "Đã phát hiện Lõi! Đang đánh Lõi Nhà Máy từ trên nóc (Anti-Ban)"
+            equipWeapon(_G.SelectWeapon)
+            toTarget(CFrame.new(FACTORY_ROOF_POS))
 
-        local primaryPart = core.PrimaryPart or core:FindFirstChildWhichIsA("BasePart")
-        if primaryPart then
-            pcall(function()
-                local sz = math.max(_G.HitboxSize or 15, 60)
-                primaryPart.Size = Vector3.new(sz, sz, sz)
-                primaryPart.CanCollide = false
-            end)
-        end
+            local primaryPart = core.PrimaryPart or core:FindFirstChildWhichIsA("BasePart")
+            if primaryPart then
+                pcall(function()
+                    local sz = math.max(_G.HitboxSize or 15, 60)
+                    primaryPart.Size = Vector3.new(sz, sz, sz)
+                    primaryPart.CanCollide = false
+                end)
+            end
 
-        lastAttackTime = os.clock()
-        lastAttackMethod = "Đánh từ nóc"
-        sendFastAttack(core)
-        if _G.AutoSkill then
-            useSkills(core)
+            lastAttackTime = os.clock()
+            lastAttackMethod = "Đánh từ nóc"
+            sendFastAttack(core)
+            if _G.AutoSkill then
+                useSkills(core)
+            end
         end
     else
-        clearFarmTarget()
-        lastFactoryStatus = "Đang đứng trên nóc Nhà Máy (Chờ Core xuất hiện)..."
-        toTarget(CFrame.new(FACTORY_ROOF_POS))
+        lastFactoryStatus = "Đang chờ Nhà Máy mở cửa (Vẫn farm level/nhiệm vụ bình thường)"
     end
 end
 
