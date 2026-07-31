@@ -283,6 +283,14 @@ end
 
 local WorldSea = detectWorldSea()
 
+local function getCurrentSeaPlaceId()
+    local sea = detectWorldSea()
+    if sea == 2 then return 4442272183
+    elseif sea == 3 then return 7449423635
+    else return 2753915549
+    end
+end
+
 ------------------------------------------------------------
 -- PHẦN 1.5: LOAD FLUENT UI LIBRARY
 ------------------------------------------------------------
@@ -2332,6 +2340,8 @@ local function serverHop(preferLowPopulation, wantedMaximum)
     if serverHopBusy then return false, "Hệ thống đang tìm máy chủ." end
     serverHopBusy = true
 
+    local targetPlaceId = getCurrentSeaPlaceId()
+
     local ok, result = pcall(function()
         local available, visitedFallback = {}, {}
         local visited = RuntimeEnv.HAOTOOL_VISITED_SERVERS or {}
@@ -2340,7 +2350,7 @@ local function serverHop(preferLowPopulation, wantedMaximum)
 
         -- Đọc tối đa 300 máy chủ công khai rồi sắp theo số người và độ trễ.
         for _ = 1, 3 do
-            local url = "https://games.roblox.com/v1/games/" .. game.PlaceId
+            local url = "https://games.roblox.com/v1/games/" .. targetPlaceId
                 .. "/servers/Public?sortOrder=Asc&limit=100"
             if cursor and cursor ~= "" then
                 url = url .. "&cursor=" .. HttpService:UrlEncode(cursor)
@@ -2363,7 +2373,7 @@ local function serverHop(preferLowPopulation, wantedMaximum)
             end
             return a.playing < b.playing
         end)
-        if #candidates == 0 then error("Không tìm thấy máy chủ còn chỗ trống.") end
+        if #candidates == 0 then error("Không tìm thấy máy chủ còn chỗ trống tại Biển " .. WorldSea .. ".") end
 
         local chosen = nil
         if preferLowPopulation then
@@ -2381,7 +2391,7 @@ local function serverHop(preferLowPopulation, wantedMaximum)
 
         visited[chosen.id] = true
         saveTeleportState()
-        TeleportService:TeleportToPlaceInstance(game.PlaceId, chosen.id, Player)
+        TeleportService:TeleportToPlaceInstance(targetPlaceId, chosen.id, Player)
         return chosen
     end)
 
@@ -3829,11 +3839,11 @@ local function startSelectedRaid()
     return false
 end
 
--- ====== Tự động đánh Nhà Máy (Sea 2) ======
+-- ====== Tự động đánh Nhà Máy (Sea 2) — Đứng trên nóc An Toàn Anti-Ban ======
 local FactoryModule = {}
 do
 local lastFactoryStatus = "Chờ Nhà Máy xuất hiện"
-local FACTORY_CORE_POS = Vector3.new(424.387, 211.750, -429.620)
+local FACTORY_ROOF_POS = Vector3.new(424.387, 275.000, -429.620) -- Đứng trên nóc Nhà Máy an toàn
 
 local function findFactoryCore()
     local enemies = workspace:FindFirstChild("Enemies")
@@ -3873,13 +3883,29 @@ FactoryModule.Step = function()
 
     local core = findFactoryCore()
     if core then
-        lastFactoryStatus = "Đang tấn công Lõi Nhà Máy (Core)"
+        lastFactoryStatus = "Đang đánh Lõi Nhà Máy từ trên nóc (An toàn Anti-Ban)"
         equipWeapon(_G.SelectWeapon)
-        engageTarget(core, "Core", _G.SelectWeapon)
+        toTarget(CFrame.new(FACTORY_ROOF_POS))
+
+        local primaryPart = core.PrimaryPart or core:FindFirstChildWhichIsA("BasePart")
+        if primaryPart then
+            pcall(function()
+                local sz = math.max(_G.HitboxSize or 15, 60)
+                primaryPart.Size = Vector3.new(sz, sz, sz)
+                primaryPart.CanCollide = false
+            end)
+        end
+
+        lastAttackTime = os.clock()
+        lastAttackMethod = "Đánh từ nóc"
+        sendFastAttack(core)
+        if _G.AutoSkill then
+            useSkills(core)
+        end
     else
         clearFarmTarget()
-        lastFactoryStatus = "Đang chờ Lõi Nhà Máy xuất hiện..."
-        toTarget(CFrame.new(FACTORY_CORE_POS + Vector3.new(0, 18, 0)))
+        lastFactoryStatus = "Đang đứng trên nóc Nhà Máy (Chờ Core xuất hiện)..."
+        toTarget(CFrame.new(FACTORY_ROOF_POS))
     end
 end
 
@@ -5358,7 +5384,8 @@ ServerSection:AddButton({
     Description = "Kết nối lại đúng máy chủ hiện tại.",
     Callback = function()
         pcall(function()
-            game:GetService("TeleportService"):TeleportToPlaceInstance(game.PlaceId, game.JobId, Player)
+            local targetPlaceId = getCurrentSeaPlaceId()
+            game:GetService("TeleportService"):TeleportToPlaceInstance(targetPlaceId, game.JobId, Player)
         end)
     end
 })
